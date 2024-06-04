@@ -3,6 +3,7 @@ package ethlogwal
 import (
 	"bytes"
 	"context"
+	"ethwal/storage/gcloud"
 	"fmt"
 	"io"
 	"os"
@@ -60,7 +61,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 
 	if opt.GoogleCloudStorageBucket != "" {
 		fs = storage.NewCloudStorageFS(opt.GoogleCloudStorageBucket, nil)
-		fs = NewGoogleCloudChecksumStorage(fs, int(opt.MaxWALSize+(opt.MaxWALSize/10)))
+		fs = gcloud.NewGoogleCloudChecksumStorage(fs, int(opt.MaxWALSize+(opt.MaxWALSize/10)))
 		fs = storage.NewPrefixWrapper(fs, opt.Path)
 	} else {
 		if _, err = os.Stat(opt.Path); os.IsNotExist(err) {

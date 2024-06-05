@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	WALFormatVersion = "v4"
+	WALFormatVersion = "v5"
 )
 
 type walFile struct {

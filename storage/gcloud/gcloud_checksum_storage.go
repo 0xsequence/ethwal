@@ -14,11 +14,10 @@ import (
 
 type GoogleCloudChecksumStorage struct {
 	storage.FS
-	chuckSize int
 }
 
 func NewGoogleCloudChecksumStorage(fs storage.FS, chunkSize int) *GoogleCloudChecksumStorage {
-	return &GoogleCloudChecksumStorage{FS: fs, chuckSize: chunkSize}
+	return &GoogleCloudChecksumStorage{FS: fs}
 }
 
 func (s *GoogleCloudChecksumStorage) Create(ctx context.Context, name string, opts *storage.WriterOptions) (io.WriteCloser, error) {
@@ -30,7 +29,6 @@ func (s *GoogleCloudChecksumStorage) Create(ctx context.Context, name string, op
 	if !ok {
 		return nil, errors.New("ethlogwal: provided file system does not implement google cloud storage writer")
 	}
-	writer_.ChunkSize = s.chuckSize
 	return &GoogleCloudChecksumWriter{writer: writer_, buffer: bytes.NewBuffer(nil)}, nil
 }
 

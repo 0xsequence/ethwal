@@ -127,7 +127,7 @@ func (r *reader[T]) Read() (Block[T], error) {
 	}
 
 	var block Block[T]
-	for structs.IsZero(block) || block.BlockNumber <= r.lastBlockNum {
+	for structs.IsZero(block) || block.Number <= r.lastBlockNum {
 		err = r.decoder.Decode(&block)
 		if err != nil {
 			if err == io.EOF {
@@ -145,12 +145,12 @@ func (r *reader[T]) Read() (Block[T], error) {
 				}
 
 				if !structs.IsZero(block) {
-					r.lastBlockNum = block.BlockNumber
+					r.lastBlockNum = block.Number
 				}
 
 				if !r.isBlockWithin(block) {
 					return Block[T]{}, fmt.Errorf("block number %d is out of wal file %d-%d range",
-						block.BlockNumber,
+						block.Number,
 						r.walFiles[r.currentWALFile].FirstBlockNum,
 						r.walFiles[r.currentWALFile].LastBlockNum)
 				}
@@ -162,22 +162,22 @@ func (r *reader[T]) Read() (Block[T], error) {
 
 		if !r.isBlockWithin(block) {
 			return Block[T]{}, fmt.Errorf("block number %d is out of wal file %d-%d range",
-				block.BlockNumber,
+				block.Number,
 				r.walFiles[r.currentWALFile].FirstBlockNum,
 				r.walFiles[r.currentWALFile].LastBlockNum)
 		}
 	}
 
 	if !structs.IsZero(block) {
-		r.lastBlockNum = block.BlockNumber
+		r.lastBlockNum = block.Number
 	}
 
 	return block, nil
 }
 
 func (r *reader[T]) isBlockWithin(block Block[T]) bool {
-	return r.walFiles[r.currentWALFile].FirstBlockNum <= block.BlockNumber &&
-		block.BlockNumber <= r.walFiles[r.currentWALFile].LastBlockNum
+	return r.walFiles[r.currentWALFile].FirstBlockNum <= block.Number &&
+		block.Number <= r.walFiles[r.currentWALFile].LastBlockNum
 }
 
 func (r *reader[T]) Seek(blockNum uint64) error {

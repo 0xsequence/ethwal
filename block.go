@@ -1,10 +1,12 @@
 package ethlogwal
 
+import "github.com/0xsequence/go-sequence/lib/prototyp"
+
 type Block[T any] struct {
-	BlockHash   [32]byte `json:"blockHash"`
-	BlockNumber uint64   `json:"blockNum"`
-	TS          uint64   `json:"blockTS"` // unix ts
-	Data        T        `json:"data"`
+	Hash   prototyp.Hash `json:"blockHash"`
+	Number uint64        `json:"blockNum"`
+	TS     uint64        `json:"blockTS"` // unix ts
+	Data   T             `json:"blockData"`
 }
 
 type Blocks[T any] []Block[T]

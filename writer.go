@@ -99,7 +99,7 @@ func (w *writer[T]) Write(b Block[T]) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.lastBlockNum >= b.BlockNumber {
+	if w.lastBlockNum >= b.Number {
 		return nil
 	}
 
@@ -107,7 +107,7 @@ func (w *writer[T]) Write(b Block[T]) error {
 		if err := w.writeNextFile(); err != nil {
 			return fmt.Errorf("failed to write next WAL file: %w", err)
 		}
-		w.firstBlockNum = b.BlockNumber
+		w.firstBlockNum = b.Number
 	}
 
 	err := w.encoder.Encode(b)
@@ -115,7 +115,7 @@ func (w *writer[T]) Write(b Block[T]) error {
 		return fmt.Errorf("failed to encode WAL data: %w", err)
 	}
 
-	w.lastBlockNum = b.BlockNumber
+	w.lastBlockNum = b.Number
 
 	return nil
 }

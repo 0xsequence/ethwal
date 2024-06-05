@@ -26,13 +26,13 @@ func TestWriterNoGap(t *testing.T) {
 		ngw := NewWriterNoGap[int](w)
 		require.NotNil(t, w)
 
-		err = ngw.Write(Block[int]{BlockNumber: 1})
+		err = ngw.Write(Block[int]{Number: 1})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{BlockNumber: 2})
+		err = ngw.Write(Block[int]{Number: 2})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{BlockNumber: 3})
+		err = ngw.Write(Block[int]{Number: 3})
 		require.NoError(t, err)
 
 		err = (w.(*writer[int])).writeNextFile()
@@ -71,16 +71,16 @@ func TestWriterNoGap(t *testing.T) {
 		ngw := NewWriterNoGap[int](w)
 		require.NotNil(t, w)
 
-		err = ngw.Write(Block[int]{BlockNumber: 1})
+		err = ngw.Write(Block[int]{Number: 1})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{BlockNumber: 2})
+		err = ngw.Write(Block[int]{Number: 2})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{BlockNumber: 3})
+		err = ngw.Write(Block[int]{Number: 3})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{BlockNumber: 10})
+		err = ngw.Write(Block[int]{Number: 10})
 
 		err = (w.(*writer[int])).writeNextFile()
 		require.NoError(t, err)

@@ -3,20 +3,27 @@ module ethwal
 go 1.21.5
 
 require (
+	cloud.google.com/go/storage v1.41.0
+	github.com/0xsequence/ethkit v1.25.0
+	github.com/0xsequence/go-sequence v0.33.0
+	github.com/DataDog/zstd v1.5.5
+	github.com/Shopify/go-storage v1.3.2
+	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
+	github.com/fatih/structs v1.1.0
+	github.com/fxamacker/cbor/v2 v2.6.0
+	github.com/stretchr/testify v1.9.0
+)
+
+require (
 	cloud.google.com/go v0.113.0 // indirect
 	cloud.google.com/go/auth v0.4.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.2 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	cloud.google.com/go/iam v1.1.8 // indirect
-	cloud.google.com/go/storage v1.41.0 // indirect
-	github.com/0xsequence/ethkit v1.25.0 // indirect
-	github.com/DataDog/zstd v1.5.5 // indirect
-	github.com/Shopify/go-storage v1.3.2 // indirect
-	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500 // indirect
+	github.com/btcsuite/btcd/btcec/v2 v2.3.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fatih/structs v1.1.0 // indirect
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fxamacker/cbor/v2 v2.6.0 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -26,8 +33,8 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.4 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect

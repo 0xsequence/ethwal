@@ -6,8 +6,8 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/go-sequence/lib/prototyp"
 	"github.com/c2h5oh/datasize"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,76 +16,76 @@ import (
 const testPath = ".tmp/ethwal"
 
 func testSetup(t *testing.T) {
-	blocksFile1 := Blocks[[]types.Log]{
+	blocksFile1 := Blocks[int]{
 		{
-			BlockHash:   common.Hash{0x01},
-			BlockNumber: 1,
-			TS:          0,
-			Data:        nil,
+			Hash:   prototyp.HashFromBytes([]byte{0x01}),
+			Number: 1,
+			TS:     0,
+			Data:   0,
 		},
 		{
-			BlockHash:   common.Hash{0x02},
-			BlockNumber: 2,
-			TS:          0,
-			Data:        nil,
+			Hash:   prototyp.HashFromBytes([]byte{0x02}),
+			Number: 2,
+			TS:     0,
+			Data:   0,
 		},
 		{
-			BlockHash:   common.Hash{0x03},
-			BlockNumber: 3,
-			TS:          0,
-			Data:        nil,
+			Hash:   prototyp.HashFromBytes([]byte{0x03}),
+			Number: 3,
+			TS:     0,
+			Data:   0,
 		},
 		{
-			BlockHash:   common.Hash{0x04},
-			BlockNumber: 4,
-			TS:          0,
-			Data:        nil,
-		},
-	}
-
-	blocksFile2 := Blocks[[]types.Log]{
-		{
-			BlockHash:   common.Hash{0x05},
-			BlockNumber: 5,
-			TS:          0,
-			Data:        nil,
-		},
-		{
-			BlockHash:   common.Hash{0x06},
-			BlockNumber: 6,
-			TS:          0,
-			Data:        nil,
-		},
-		{
-			BlockHash:   common.Hash{0x07},
-			BlockNumber: 7,
-			TS:          0,
-			Data:        nil,
-		},
-		{
-			BlockHash:   common.Hash{0x08},
-			BlockNumber: 8,
-			TS:          0,
-			Data:        nil,
+			Hash:   prototyp.HashFromBytes([]byte{0x04}),
+			Number: 4,
+			TS:     0,
+			Data:   0,
 		},
 	}
 
-	blocksFile3 := Blocks[[]types.Log]{
+	blocksFile2 := Blocks[int]{
 		{
-			BlockHash:   common.Hash{0x0b},
-			BlockNumber: 11,
-			TS:          0,
-			Data:        nil,
+			Hash:   prototyp.HashFromBytes([]byte{0x05}),
+			Number: 5,
+			TS:     0,
+			Data:   0,
 		},
 		{
-			BlockHash:   common.Hash{0x0c},
-			BlockNumber: 12,
-			TS:          0,
-			Data:        nil,
+			Hash:   prototyp.HashFromBytes([]byte{0x06}),
+			Number: 6,
+			TS:     0,
+			Data:   0,
+		},
+		{
+			Hash:   prototyp.HashFromBytes([]byte{0x07}),
+			Number: 7,
+			TS:     0,
+			Data:   0,
+		},
+		{
+			Hash:   prototyp.HashFromBytes([]byte{0x08}),
+			Number: 8,
+			TS:     0,
+			Data:   0,
 		},
 	}
 
-	walDir := path.Join(testPath, WALFormatVersion)
+	blocksFile3 := Blocks[int]{
+		{
+			Hash:   prototyp.HashFromBytes([]byte{0x0b}),
+			Number: 11,
+			TS:     0,
+			Data:   0,
+		},
+		{
+			Hash:   prototyp.HashFromBytes([]byte{0x0c}),
+			Number: 12,
+			TS:     0,
+			Data:   0,
+		},
+	}
+
+	walDir := path.Join(testPath, "int-wal", WALFormatVersion)
 	_ = os.MkdirAll(walDir, 0755)
 
 	f, err := os.OpenFile(path.Join(walDir, "1_4.wal"), os.O_CREATE|os.O_WRONLY, 0755)
@@ -124,15 +124,16 @@ func TestReader_All(t *testing.T) {
 	testSetup(t)
 	defer testTeardown(t)
 
-	rdr, err := NewReader[[]types.Log](Options{
+	rdr, err := NewReader[int](Options{
+		Name:           "int-wal",
 		Path:           testPath,
 		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: false,
 	})
 	require.NoError(t, err)
 
-	var blk Block[[]types.Log]
-	var blks []Block[[]types.Log]
+	var blk Block[int]
+	var blks []Block[int]
 	for blk, err = rdr.Read(); err == nil; blk, err = rdr.Read() {
 		t.Logf("blk: %+v", blk)
 		blks = append(blks, blk)
@@ -146,7 +147,8 @@ func TestReader_Seek(t *testing.T) {
 	testSetup(t)
 	defer testTeardown(t)
 
-	rdr, err := NewReader[[]types.Log](Options{
+	rdr, err := NewReader[int](Options{
+		Name:           "int-wal",
 		Path:           testPath,
 		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: false,
@@ -159,11 +161,11 @@ func TestReader_Seek(t *testing.T) {
 
 	blk, err := rdr.Read()
 	require.NoError(t, err)
-	assert.Equal(t, uint64(2), blk.BlockNumber)
+	assert.Equal(t, uint64(2), blk.Number)
 
 	blk, err = rdr.Read()
 	require.NoError(t, err)
-	assert.Equal(t, uint64(3), blk.BlockNumber)
+	assert.Equal(t, uint64(3), blk.Number)
 
 	// seek to 10, which does not exist but there is a file with block 11
 	err = rdr.Seek(10)
@@ -171,11 +173,11 @@ func TestReader_Seek(t *testing.T) {
 
 	blk, err = rdr.Read()
 	require.NoError(t, err)
-	assert.Equal(t, uint64(11), blk.BlockNumber)
+	assert.Equal(t, uint64(11), blk.Number)
 
 	blk, err = rdr.Read()
 	require.NoError(t, err)
-	assert.Equal(t, uint64(12), blk.BlockNumber)
+	assert.Equal(t, uint64(12), blk.Number)
 
 	_, err = rdr.Read()
 	require.Equal(t, io.EOF, err)
@@ -191,6 +193,7 @@ func TestReader_Seek(t *testing.T) {
 
 func Test_ReaderStoragePathSuffix(t *testing.T) {
 	options := Options{
+		Name:           "int-wal",
 		Path:           testPath,
 		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: true,

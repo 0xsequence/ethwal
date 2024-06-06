@@ -14,10 +14,9 @@ func TestWriterNoGap(t *testing.T) {
 		defer os.RemoveAll("wal")
 
 		w, err := NewWriter[int](Options{
-			Name:            "int-wal",
-			Path:            "wal",
-			UseCompression:  false,
-			UseJSONEncoding: true,
+			Name:       "int-wal",
+			Path:       "wal",
+			NewEncoder: NewJSONEncoder,
 		})
 		require.NoError(t, err)
 
@@ -42,7 +41,7 @@ func TestWriterNoGap(t *testing.T) {
 		walData, err := os.ReadFile("wal/int-wal/v5/1_3.wal")
 		require.NoError(t, err)
 
-		d := newJSONDecoder(bytes.NewBuffer(walData))
+		d := NewJSONDecoder(bytes.NewBuffer(walData))
 
 		var b Block[int]
 		var blockCount int
@@ -58,10 +57,9 @@ func TestWriterNoGap(t *testing.T) {
 		defer os.RemoveAll("wal")
 
 		w, err := NewWriter[int](Options{
-			Name:            "int-wal",
-			Path:            "wal",
-			UseCompression:  false,
-			UseJSONEncoding: true,
+			Name:       "int-wal",
+			Path:       "wal",
+			NewEncoder: NewJSONEncoder,
 		})
 		require.NoError(t, err)
 
@@ -88,7 +86,7 @@ func TestWriterNoGap(t *testing.T) {
 		walData, err := os.ReadFile("wal/int-wal/v5/1_10.wal")
 		require.NoError(t, err)
 
-		d := newJSONDecoder(bytes.NewBuffer(walData))
+		d := NewJSONDecoder(bytes.NewBuffer(walData))
 
 		var b Block[int]
 		var blockCount int

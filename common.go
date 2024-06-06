@@ -22,15 +22,33 @@ type walFile struct {
 }
 
 type Options struct {
-	Name            string
-	Path            string
-	CachePath       string
-	UseCompression  bool
-	UseJSONEncoding bool
+	Name string
+
+	Path      string
+	CachePath string
+
+	NewCompressor   NewCompressorFunc
+	NewDecompressor NewDecompressorFunc
+
+	NewEncoder NewEncoderFunc
+	NewDecoder NewDecoderFunc
 
 	FileRollPolicy FileRollPolicy
 
 	GoogleCloudStorageBucket string
+}
+
+func (o Options) WithDefaults() Options {
+	if o.NewEncoder == nil {
+		o.NewEncoder = NewBinaryEncoder
+	}
+	if o.NewDecoder == nil {
+		o.NewDecoder = NewBinaryDecoder
+	}
+	if o.FileRollPolicy == nil {
+		o.FileRollPolicy = NewFileSizeRollPolicy(uint64(defaultBufferSize))
+	}
+	return o
 }
 
 // funcCloser is a helper struct that implements io.Closer interface
@@ -43,6 +61,11 @@ func (f *funcCloser) Close() error {
 		return f.CloseFunc()
 	}
 	return nil
+}
+
+// buildETHWALPath returns the path to the WAL directory
+func buildETHWALPath(name, p string) string {
+	return path.Join(p, name, WALFormatVersion)
 }
 
 // parseWALFileBlockRange reads first and last block number stored in WAL file from file name

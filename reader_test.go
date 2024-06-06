@@ -90,7 +90,7 @@ func testSetup(t *testing.T) {
 	f, err := os.OpenFile(path.Join(walDir, "1_4.wal"), os.O_CREATE|os.O_WRONLY, 0755)
 	require.NoError(t, err)
 
-	enc := newBinaryEncoder(f)
+	enc := NewBinaryEncoder(f)
 	for _, blk := range blocksFile1 {
 		_ = enc.Encode(blk)
 	}
@@ -99,7 +99,7 @@ func testSetup(t *testing.T) {
 	f, err = os.OpenFile(path.Join(walDir, "5_8.wal"), os.O_CREATE|os.O_WRONLY, 0755)
 	require.NoError(t, err)
 
-	enc = newBinaryEncoder(f)
+	enc = NewBinaryEncoder(f)
 	for _, blk := range blocksFile2 {
 		_ = enc.Encode(blk)
 	}
@@ -108,7 +108,7 @@ func testSetup(t *testing.T) {
 	f, err = os.OpenFile(path.Join(walDir, "11_12.wal"), os.O_CREATE|os.O_WRONLY, 0755)
 	require.NoError(t, err)
 
-	enc = newBinaryEncoder(f)
+	enc = NewBinaryEncoder(f)
 	for _, blk := range blocksFile3 {
 		_ = enc.Encode(blk)
 	}
@@ -124,9 +124,8 @@ func TestReader_All(t *testing.T) {
 	defer testTeardown(t)
 
 	rdr, err := NewReader[int](Options{
-		Name:           "int-wal",
-		Path:           testPath,
-		UseCompression: false,
+		Name: "int-wal",
+		Path: testPath,
 	})
 	require.NoError(t, err)
 
@@ -146,9 +145,8 @@ func TestReader_Seek(t *testing.T) {
 	defer testTeardown(t)
 
 	rdr, err := NewReader[int](Options{
-		Name:           "int-wal",
-		Path:           testPath,
-		UseCompression: false,
+		Name: "int-wal",
+		Path: testPath,
 	})
 	require.NoError(t, err)
 
@@ -190,10 +188,8 @@ func TestReader_Seek(t *testing.T) {
 
 func Test_ReaderStoragePathSuffix(t *testing.T) {
 	options := Options{
-		Name:           "int-wal",
-		Path:           testPath,
-		UseCompression: true,
-		// UseJSONEncoding: true,
+		Name: "int-wal",
+		Path: testPath,
 	}
 
 	r, err := NewReader[[]types.Log](options)

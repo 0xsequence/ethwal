@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"sort"
 	"sync"
 
-	"github.com/DataDog/zstd"
 	"github.com/Shopify/go-storage"
 	"github.com/fatih/structs"
 )
@@ -45,6 +43,9 @@ type reader[T any] struct {
 }
 
 func NewReader[T any](opt Options) (Reader[T], error) {
+	// apply default options on uninitialized fields
+	opt = opt.WithDefaults()
+
 	if opt.Name == "" {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
@@ -54,16 +55,16 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 		err error
 	)
 
-	opt.Path = path.Join(opt.Path, opt.Name, WALFormatVersion)
-
-	if len(opt.Path) > 0 && opt.Path[len(opt.Path)-1] != os.PathSeparator {
-		opt.Path = opt.Path + string(os.PathSeparator)
+	walPath := buildETHWALPath(opt.Name, opt.Path)
+	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
+		walPath = walPath + string(os.PathSeparator)
 	}
 
 	if opt.GoogleCloudStorageBucket != "" {
 		fs = storage.NewCloudStorageFS(opt.GoogleCloudStorageBucket, nil)
 		fs = gcloud.NewGoogleCloudChecksumStorage(fs)
-		fs = storage.NewPrefixWrapper(fs, opt.Path)
+		fs = storage.NewPrefixWrapper(fs, walPath)
+
 		if opt.CachePath != "" {
 			if _, err = os.Stat(opt.CachePath); os.IsNotExist(err) {
 				err := os.MkdirAll(opt.CachePath, 0755)
@@ -74,14 +75,14 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 			fs = storage.NewCacheWrapper(fs, storage.NewLocalFS(opt.CachePath), nil)
 		}
 	} else {
-		if _, err = os.Stat(opt.Path); os.IsNotExist(err) {
-			err := os.MkdirAll(opt.Path, 0755)
+		if _, err = os.Stat(walPath); os.IsNotExist(err) {
+			err := os.MkdirAll(walPath, 0755)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create WAL directory")
 			}
 		}
 
-		fs = storage.NewLocalFS(opt.Path)
+		fs = storage.NewLocalFS(walPath)
 	}
 
 	walFiles, err := listWALFiles(fs)
@@ -90,11 +91,10 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	}
 
 	return &reader[T]{
-		options:        opt,
-		path:           opt.Path,
-		fs:             fs,
-		walFiles:       walFiles,
-		useCompression: opt.UseCompression,
+		options:  opt,
+		path:     walPath,
+		fs:       fs,
+		walFiles: walFiles,
 	}, nil
 }
 
@@ -218,26 +218,22 @@ func (r *reader[T]) readFile(index int) error {
 		return err
 	}
 
-	reader := io.NopCloser(file)
-	if r.useCompression {
-		reader = zstd.NewReader(reader)
-	}
-
-	if r.options.UseJSONEncoding {
-		r.decoder = newJSONDecoder(reader)
-	} else {
-		r.decoder = newBinaryDecoder(reader)
+	walReader := io.NopCloser(file)
+	if r.options.NewDecompressor != nil {
+		walReader = r.options.NewDecompressor(walReader)
 	}
 
 	r.closer = &funcCloser{
 		CloseFunc: func() error {
-			if err := reader.Close(); err != nil {
+			if err := walReader.Close(); err != nil {
 				_ = file.Close()
 				return err
 			}
 			return file.Close()
 		},
 	}
+
+	r.decoder = r.options.NewDecoder(walReader)
 
 	r.currentWALFile = index
 	return nil

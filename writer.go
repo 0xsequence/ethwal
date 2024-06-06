@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"sync"
 
-	"github.com/DataDog/zstd"
 	"github.com/Shopify/go-storage"
 	"github.com/c2h5oh/datasize"
 )
@@ -24,14 +22,13 @@ type Writer[T any] interface {
 }
 
 type writer[T any] struct {
-	options        Options
-	path           string
-	fs             storage.FS
-	useCompression bool
+	options Options
 
-	fileRollPolicy FileRollPolicy
-	buffer         *bytes.Buffer
-	bufferCloser   io.Closer
+	path string
+	fs   storage.FS
+
+	buffer       *bytes.Buffer
+	bufferCloser io.Closer
 
 	firstBlockNum uint64
 	lastBlockNum  uint64
@@ -42,6 +39,9 @@ type writer[T any] struct {
 }
 
 func NewWriter[T any](opt Options) (Writer[T], error) {
+	// apply default options on uninitialized fields
+	opt = opt.WithDefaults()
+
 	if opt.Name == "" {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
@@ -55,25 +55,24 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		err error
 	)
 
-	opt.Path = path.Join(opt.Path, opt.Name, WALFormatVersion)
-
-	if len(opt.Path) > 0 && opt.Path[len(opt.Path)-1] != os.PathSeparator {
-		opt.Path = opt.Path + string(os.PathSeparator)
+	walPath := buildETHWALPath(opt.Name, opt.Path)
+	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
+		walPath = walPath + string(os.PathSeparator)
 	}
 
 	if opt.GoogleCloudStorageBucket != "" {
 		fs = storage.NewCloudStorageFS(opt.GoogleCloudStorageBucket, nil)
 		fs = gcloud.NewGoogleCloudChecksumStorage(fs)
-		fs = storage.NewPrefixWrapper(fs, opt.Path)
+		fs = storage.NewPrefixWrapper(fs, walPath)
 	} else {
-		if _, err = os.Stat(opt.Path); os.IsNotExist(err) {
-			err := os.MkdirAll(opt.Path, 0755)
+		if _, err = os.Stat(walPath); os.IsNotExist(err) {
+			err := os.MkdirAll(walPath, 0755)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create WAL directory")
 			}
 		}
 
-		fs = storage.NewLocalFS(opt.Path)
+		fs = storage.NewLocalFS(walPath)
 	}
 
 	walFiles, err := listWALFiles(fs)
@@ -87,14 +86,12 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	}
 
 	return &writer[T]{
-		options:        opt,
-		path:           opt.Path,
-		fs:             fs,
-		useCompression: opt.UseCompression,
-		firstBlockNum:  lastBlockNum + 1,
-		lastBlockNum:   lastBlockNum,
-		fileRollPolicy: opt.FileRollPolicy,
-		buffer:         bytes.NewBuffer(make([]byte, 0, defaultBufferSize)),
+		options:       opt,
+		path:          walPath,
+		fs:            fs,
+		firstBlockNum: lastBlockNum + 1,
+		lastBlockNum:  lastBlockNum,
+		buffer:        bytes.NewBuffer(make([]byte, 0, defaultBufferSize)),
 	}, nil
 }
 
@@ -106,7 +103,7 @@ func (w *writer[T]) Write(b Block[T]) error {
 		return nil
 	}
 
-	if !w.isInitialized() || w.fileRollPolicy.ShouldRoll() {
+	if !w.isReadyToWrite() || w.options.FileRollPolicy.ShouldRoll() {
 		if err := w.rollFile(); err != nil {
 			return fmt.Errorf("failed to roll to the next WAL file: %w", err)
 		}
@@ -132,7 +129,7 @@ func (w *writer[T]) Close() error {
 	return nil
 }
 
-func (w *writer[T]) isInitialized() bool {
+func (w *writer[T]) isReadyToWrite() bool {
 	return w.encoder != nil
 }
 
@@ -189,7 +186,7 @@ func (w *writer[T]) newFile() error {
 
 	// create new buffer writer
 	bufferWriter := io.Writer(w.buffer)
-	if policy, ok := w.fileRollPolicy.(*fileSizeRollPolicy); ok {
+	if policy, ok := w.options.FileRollPolicy.(FileSizeRollPolicy); ok {
 		bufferWriter = policy.WrapWriter(bufferWriter)
 	}
 
@@ -201,18 +198,13 @@ func (w *writer[T]) newFile() error {
 	}
 
 	// wrap buffer writer with compression writer
-	if w.useCompression {
-		zw := zstd.NewWriterLevel(bufferWriter, zstd.BestSpeed)
+	if w.options.NewCompressor != nil {
+		zw := w.options.NewCompressor(bufferWriter)
 		bufferWriter = zw
 		w.bufferCloser = zw
 	}
 
 	// create new encoder
-	if w.options.UseJSONEncoding {
-		w.encoder = newJSONEncoder(bufferWriter)
-	} else {
-		w.encoder = newBinaryEncoder(bufferWriter)
-	}
-
+	w.encoder = w.options.NewEncoder(bufferWriter)
 	return nil
 }

@@ -2,15 +2,15 @@ package ethlogwal
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"testing"
 
 	"github.com/0xsequence/go-sequence/lib/prototyp"
-	"github.com/DataDog/zstd"
 	"github.com/stretchr/testify/require"
 )
+
+// TODO: write generic tests with diffrent encoders / decoders and compressors
 
 func TestWriter_Write(t *testing.T) {
 	testSetup(t)
@@ -44,10 +44,9 @@ func TestWriter_Write(t *testing.T) {
 	}
 
 	options := Options{
-		Name:           "int-wal",
-		Path:           testPath,
-		UseCompression: false,
-		// UseJSONEncoding: true,
+		Name:       "int-wal",
+		Path:       testPath,
+		NewDecoder: NewBinaryDecoder,
 	}
 
 	w, err := NewWriter[int](options)
@@ -74,19 +73,7 @@ func TestWriter_Write(t *testing.T) {
 	f, err := os.Open(filePath)
 	require.NoError(t, err)
 
-	var r io.Reader
-	if options.UseCompression {
-		r = zstd.NewReader(f)
-	} else {
-		r = f
-	}
-
-	var dec Decoder
-	if options.UseJSONEncoding {
-		dec = newJSONDecoder(r)
-	} else {
-		dec = newBinaryDecoder(r)
-	}
+	var dec = options.NewDecoder(f)
 
 	var blocks Blocks[int]
 	for {
@@ -103,11 +90,8 @@ func TestWriter_Write(t *testing.T) {
 
 func Test_WriterStoragePathSuffix(t *testing.T) {
 	options := Options{
-		Name:           "int-wal",
-		Path:           testPath,
-		UseCompression: true,
-
-		// UseJSONEncoding: true,
+		Name: "int-wal",
+		Path: testPath,
 	}
 
 	w, err := NewWriter[int](options)

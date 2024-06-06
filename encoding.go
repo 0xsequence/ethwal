@@ -7,6 +7,9 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
+type NewEncoderFunc func(w io.Writer) Encoder
+type NewDecoderFunc func(r io.Reader) Decoder
+
 type Encoder interface {
 	Encode(v any) error
 }
@@ -15,18 +18,18 @@ type Decoder interface {
 	Decode(v any) error
 }
 
-func newJSONEncoder(w io.Writer) *json.Encoder {
+func NewJSONEncoder(w io.Writer) Encoder {
 	return json.NewEncoder(w)
 }
 
-func newJSONDecoder(r io.Reader) *json.Decoder {
+func NewJSONDecoder(r io.Reader) Decoder {
 	return json.NewDecoder(r)
 }
 
-func newBinaryEncoder(w io.Writer) *cbor.Encoder {
+func NewBinaryEncoder(w io.Writer) Encoder {
 	return cbor.NewEncoder(w)
 }
 
-func newBinaryDecoder(r io.Reader) *cbor.Decoder {
+func NewBinaryDecoder(r io.Reader) Decoder {
 	return cbor.NewDecoder(r)
 }

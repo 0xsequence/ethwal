@@ -16,7 +16,7 @@ type GoogleCloudChecksumStorage struct {
 	storage.FS
 }
 
-func NewGoogleCloudChecksumStorage(fs storage.FS, chunkSize int) *GoogleCloudChecksumStorage {
+func NewGoogleCloudChecksumStorage(fs storage.FS) *GoogleCloudChecksumStorage {
 	return &GoogleCloudChecksumStorage{FS: fs}
 }
 

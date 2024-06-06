@@ -8,7 +8,6 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/go-sequence/lib/prototyp"
-	"github.com/c2h5oh/datasize"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,7 +126,6 @@ func TestReader_All(t *testing.T) {
 	rdr, err := NewReader[int](Options{
 		Name:           "int-wal",
 		Path:           testPath,
-		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: false,
 	})
 	require.NoError(t, err)
@@ -150,7 +148,6 @@ func TestReader_Seek(t *testing.T) {
 	rdr, err := NewReader[int](Options{
 		Name:           "int-wal",
 		Path:           testPath,
-		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: false,
 	})
 	require.NoError(t, err)
@@ -195,7 +192,6 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 	options := Options{
 		Name:           "int-wal",
 		Path:           testPath,
-		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: true,
 		// UseJSONEncoding: true,
 	}

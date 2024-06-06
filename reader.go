@@ -31,7 +31,6 @@ type reader[T any] struct {
 	path           string
 	fs             storage.FS
 	useCompression bool
-	maxWALSize     uint64
 
 	closer io.Closer
 
@@ -50,10 +49,6 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
 
-	if opt.MaxWALSize == 0 {
-		return nil, fmt.Errorf("wal max size cannot be empty")
-	}
-
 	var (
 		fs  storage.FS
 		err error
@@ -67,7 +62,7 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 
 	if opt.GoogleCloudStorageBucket != "" {
 		fs = storage.NewCloudStorageFS(opt.GoogleCloudStorageBucket, nil)
-		fs = gcloud.NewGoogleCloudChecksumStorage(fs, int(opt.MaxWALSize+(opt.MaxWALSize/10)))
+		fs = gcloud.NewGoogleCloudChecksumStorage(fs)
 		fs = storage.NewPrefixWrapper(fs, opt.Path)
 		if opt.CachePath != "" {
 			if _, err = os.Stat(opt.CachePath); os.IsNotExist(err) {
@@ -100,7 +95,6 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 		fs:             fs,
 		walFiles:       walFiles,
 		useCompression: opt.UseCompression,
-		maxWALSize:     opt.MaxWALSize,
 	}, nil
 }
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/0xsequence/go-sequence/lib/prototyp"
 	"github.com/DataDog/zstd"
-	"github.com/c2h5oh/datasize"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,7 +46,6 @@ func TestWriter_Write(t *testing.T) {
 	options := Options{
 		Name:           "int-wal",
 		Path:           testPath,
-		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: false,
 		// UseJSONEncoding: true,
 	}
@@ -63,7 +61,7 @@ func TestWriter_Write(t *testing.T) {
 	// flush the in-memory buffer to disk
 	w_, ok := w.(*writer[int])
 	require.True(t, ok)
-	w_.writeNextFile()
+	w_.rollFile()
 
 	err = w.Close()
 	require.NoError(t, err)
@@ -107,7 +105,6 @@ func Test_WriterStoragePathSuffix(t *testing.T) {
 	options := Options{
 		Name:           "int-wal",
 		Path:           testPath,
-		MaxWALSize:     datasize.MB.Bytes(),
 		UseCompression: true,
 
 		// UseJSONEncoding: true,

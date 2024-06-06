@@ -12,7 +12,10 @@ import (
 
 	"github.com/DataDog/zstd"
 	"github.com/Shopify/go-storage"
+	"github.com/c2h5oh/datasize"
 )
+
+const defaultBufferSize = 8 * datasize.MB
 
 type Writer[T any] interface {
 	Write(b Block[T]) error
@@ -25,11 +28,10 @@ type writer[T any] struct {
 	path           string
 	fs             storage.FS
 	useCompression bool
-	maxWALSize     uint64
 
-	stats  *fileStats
-	closer io.Closer
-	buffer *bytes.Buffer
+	fileRollPolicy FileRollPolicy
+	buffer         *bytes.Buffer
+	bufferCloser   io.Closer
 
 	firstBlockNum uint64
 	lastBlockNum  uint64
@@ -44,8 +46,8 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
 
-	if opt.MaxWALSize == 0 {
-		return nil, fmt.Errorf("wal max size cannot be empty")
+	if opt.FileRollPolicy == nil {
+		opt.FileRollPolicy = NewFileSizeRollPolicy(uint64(defaultBufferSize))
 	}
 
 	var (
@@ -61,7 +63,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 
 	if opt.GoogleCloudStorageBucket != "" {
 		fs = storage.NewCloudStorageFS(opt.GoogleCloudStorageBucket, nil)
-		fs = gcloud.NewGoogleCloudChecksumStorage(fs, int(opt.MaxWALSize+(opt.MaxWALSize/10)))
+		fs = gcloud.NewGoogleCloudChecksumStorage(fs)
 		fs = storage.NewPrefixWrapper(fs, opt.Path)
 	} else {
 		if _, err = os.Stat(opt.Path); os.IsNotExist(err) {
@@ -89,9 +91,10 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		path:           opt.Path,
 		fs:             fs,
 		useCompression: opt.UseCompression,
-		maxWALSize:     opt.MaxWALSize,
+		firstBlockNum:  lastBlockNum + 1,
 		lastBlockNum:   lastBlockNum,
-		buffer:         bytes.NewBuffer(make([]byte, 0, opt.MaxWALSize)),
+		fileRollPolicy: opt.FileRollPolicy,
+		buffer:         bytes.NewBuffer(make([]byte, 0, defaultBufferSize)),
 	}, nil
 }
 
@@ -103,11 +106,10 @@ func (w *writer[T]) Write(b Block[T]) error {
 		return nil
 	}
 
-	if w.isMaxFileSizeReached() {
-		if err := w.writeNextFile(); err != nil {
-			return fmt.Errorf("failed to write next WAL file: %w", err)
+	if !w.isInitialized() || w.fileRollPolicy.ShouldRoll() {
+		if err := w.rollFile(); err != nil {
+			return fmt.Errorf("failed to roll to the next WAL file: %w", err)
 		}
-		w.firstBlockNum = b.Number
 	}
 
 	err := w.encoder.Encode(b)
@@ -130,48 +132,33 @@ func (w *writer[T]) Close() error {
 	return nil
 }
 
-func (w *writer[T]) isMaxFileSizeReached() bool {
-	return w.stats == nil || w.stats.BytesWritten > w.maxWALSize
+func (w *writer[T]) isInitialized() bool {
+	return w.encoder != nil
 }
 
-func (w *writer[T]) writeNextFile() error {
-	if w.closer != nil {
-		err := w.closer.Close()
-		if err != nil {
-			return err
-		}
-
-		err = w.writeNextFileToFS()
-		if err != nil {
-			return err
-		}
-	}
-
-	w.stats = &fileStats{Writer: w.buffer}
-	w.closer = &funcCloser{
-		CloseFunc: func() error {
+func (w *writer[T]) rollFile() error {
+	// close previous buffer and write file to fs
+	if w.bufferCloser != nil {
+		// skip if there are no blocks to write
+		if w.lastBlockNum < w.firstBlockNum {
 			return nil
-		},
+		}
+
+		err := w.bufferCloser.Close()
+		if err != nil {
+			return err
+		}
+
+		err = w.writeFile()
+		if err != nil {
+			return err
+		}
 	}
 
-	writer := io.Writer(w.stats)
-	if w.useCompression {
-		zw := zstd.NewWriterLevel(writer, zstd.BestSpeed)
-
-		writer = zw
-		w.closer = zw
-	}
-
-	if w.options.UseJSONEncoding {
-		w.encoder = newJSONEncoder(writer)
-	} else {
-		w.encoder = newBinaryEncoder(writer)
-	}
-
-	return nil
+	return w.newFile()
 }
 
-func (w *writer[T]) writeNextFileToFS() error {
+func (w *writer[T]) writeFile() error {
 	f, err := w.fs.Create(
 		context.Background(),
 		fmt.Sprintf("%d_%d.wal", w.firstBlockNum, w.lastBlockNum),
@@ -190,7 +177,42 @@ func (w *writer[T]) writeNextFileToFS() error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
 
+func (w *writer[T]) newFile() error {
+	// update block numbers
+	w.firstBlockNum = w.lastBlockNum + 1
+
+	// reset buffer
 	w.buffer.Reset()
+
+	// create new buffer writer
+	bufferWriter := io.Writer(w.buffer)
+	if policy, ok := w.fileRollPolicy.(*fileSizeRollPolicy); ok {
+		bufferWriter = policy.WrapWriter(bufferWriter)
+	}
+
+	// create new buffer closer
+	w.bufferCloser = &funcCloser{
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	// wrap buffer writer with compression writer
+	if w.useCompression {
+		zw := zstd.NewWriterLevel(bufferWriter, zstd.BestSpeed)
+		bufferWriter = zw
+		w.bufferCloser = zw
+	}
+
+	// create new encoder
+	if w.options.UseJSONEncoding {
+		w.encoder = newJSONEncoder(bufferWriter)
+	} else {
+		w.encoder = newBinaryEncoder(bufferWriter)
+	}
+
 	return nil
 }

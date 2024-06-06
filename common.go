@@ -2,16 +2,13 @@ package ethlogwal
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/Shopify/go-storage"
-	"github.com/fxamacker/cbor/v2"
 )
 
 var (
@@ -28,22 +25,24 @@ type Options struct {
 	Name            string
 	Path            string
 	CachePath       string
-	MaxWALSize      uint64
 	UseCompression  bool
 	UseJSONEncoding bool
+
+	FileRollPolicy FileRollPolicy
 
 	GoogleCloudStorageBucket string
 }
 
-type fileStats struct {
-	io.Writer
-	BytesWritten uint64
+// funcCloser is a helper struct that implements io.Closer interface
+type funcCloser struct {
+	CloseFunc func() error
 }
 
-func (w *fileStats) Write(p []byte) (n int, err error) {
-	n, err = w.Writer.Write(p)
-	w.BytesWritten += uint64(n)
-	return
+func (f *funcCloser) Close() error {
+	if f.CloseFunc != nil {
+		return f.CloseFunc()
+	}
+	return nil
 }
 
 // parseWALFileBlockRange reads first and last block number stored in WAL file from file name
@@ -58,6 +57,7 @@ func parseWALFileBlockRange(filePath string) (uint64, uint64) {
 	return uint64(first), uint64(last)
 }
 
+// listWALFiles lists all WAL files in the provided file system
 func listWALFiles(fs storage.FS) ([]walFile, error) {
 	wlk, ok := fs.(storage.Walker)
 	if !ok {
@@ -89,39 +89,4 @@ func listWALFiles(fs storage.FS) ([]walFile, error) {
 	})
 
 	return walFiles, nil
-}
-
-type Encoder interface {
-	Encode(v any) error
-}
-
-type Decoder interface {
-	Decode(v any) error
-}
-
-func newJSONEncoder(w io.Writer) *json.Encoder {
-	return json.NewEncoder(w)
-}
-
-func newJSONDecoder(r io.Reader) *json.Decoder {
-	return json.NewDecoder(r)
-}
-
-func newBinaryEncoder(w io.Writer) *cbor.Encoder {
-	return cbor.NewEncoder(w)
-}
-
-func newBinaryDecoder(r io.Reader) *cbor.Decoder {
-	return cbor.NewDecoder(r)
-}
-
-type funcCloser struct {
-	CloseFunc func() error
-}
-
-func (f *funcCloser) Close() error {
-	if f.CloseFunc != nil {
-		return f.CloseFunc()
-	}
-	return nil
 }

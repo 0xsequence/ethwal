@@ -6,7 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/c2h5oh/datasize"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +16,6 @@ func TestWriterNoGap(t *testing.T) {
 		w, err := NewWriter[int](Options{
 			Name:            "int-wal",
 			Path:            "wal",
-			MaxWALSize:      uint64(1 * datasize.MB),
 			UseCompression:  false,
 			UseJSONEncoding: true,
 		})
@@ -35,13 +33,13 @@ func TestWriterNoGap(t *testing.T) {
 		err = ngw.Write(Block[int]{Number: 3})
 		require.NoError(t, err)
 
-		err = (w.(*writer[int])).writeNextFile()
+		err = (w.(*writer[int])).rollFile()
 		require.NoError(t, err)
 
 		err = ngw.Close()
 		require.NoError(t, err)
 
-		walData, err := os.ReadFile("wal/int-wal/v4/1_3.wal")
+		walData, err := os.ReadFile("wal/int-wal/v5/1_3.wal")
 		require.NoError(t, err)
 
 		d := newJSONDecoder(bytes.NewBuffer(walData))
@@ -62,7 +60,6 @@ func TestWriterNoGap(t *testing.T) {
 		w, err := NewWriter[int](Options{
 			Name:            "int-wal",
 			Path:            "wal",
-			MaxWALSize:      uint64(1 * datasize.MB),
 			UseCompression:  false,
 			UseJSONEncoding: true,
 		})
@@ -82,13 +79,13 @@ func TestWriterNoGap(t *testing.T) {
 
 		err = ngw.Write(Block[int]{Number: 10})
 
-		err = (w.(*writer[int])).writeNextFile()
+		err = (w.(*writer[int])).rollFile()
 		require.NoError(t, err)
 
 		err = ngw.Close()
 		require.NoError(t, err)
 
-		walData, err := os.ReadFile("wal/int-wal/v4/1_10.wal")
+		walData, err := os.ReadFile("wal/int-wal/v5/1_10.wal")
 		require.NoError(t, err)
 
 		d := newJSONDecoder(bytes.NewBuffer(walData))

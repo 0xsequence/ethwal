@@ -192,18 +192,72 @@ func TestReader_Read(t *testing.T) {
 			var blk Block[int]
 			var blks []Block[int]
 			for blk, err = rdr.Read(); err == nil; blk, err = rdr.Read() {
-				t.Logf("blk: %+v", blk)
+				//t.Logf("blk: %+v", blk)
 				blks = append(blks, blk)
 			}
 
 			require.Equal(t, io.EOF, err)
 			assert.Equal(t, 10, len(blks))
 
-			assert.Equal(t, rdr.BlockNum(), blks[len(blks)-1].Number)
-
 			assert.NoError(t, rdr.Close())
 		})
 	}
+}
+
+func TestReader_NumWALFiles(t *testing.T) {
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	rdr, err := NewReader[int](Options{
+		Name:       "int-wal",
+		Path:       testPath,
+		NewEncoder: NewCBOREncoder,
+		NewDecoder: NewCBORDecoder,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, 3, rdr.NumWALFiles())
+
+	require.NoError(t, rdr.Close())
+}
+
+func TestReader_BlockNum(t *testing.T) {
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	rdr, err := NewReader[int](Options{
+		Name:       "int-wal",
+		Path:       testPath,
+		NewEncoder: NewCBOREncoder,
+		NewDecoder: NewCBORDecoder,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(0), rdr.BlockNum())
+
+	blk, err := rdr.Read()
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(1), blk.Number)
+	assert.Equal(t, uint64(1), rdr.BlockNum())
+
+	blk, err = rdr.Read()
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(2), blk.Number)
+	assert.Equal(t, uint64(2), rdr.BlockNum())
+
+	err = rdr.Seek(5)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(4), rdr.BlockNum()) // last block read was 4 next block is 5
+
+	blk, err = rdr.Read()
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(5), blk.Number)
+	assert.Equal(t, uint64(5), rdr.BlockNum())
+
+	require.NoError(t, rdr.Close())
 }
 
 func TestReader_Seek(t *testing.T) {

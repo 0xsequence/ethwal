@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/0xsequence/go-sequence/lib/prototyp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -138,6 +139,75 @@ func TestWriter_Write(t *testing.T) {
 	}
 }
 
+func TestWriter_Continue(t *testing.T) {
+	defer testTeardown(t)
+
+	// 1st writer
+	w, err := NewWriter[int](Options{
+		Name: "int-wal",
+		Path: testPath,
+	})
+	require.NoError(t, err)
+
+	err = w.Write(Block[int]{Number: 1})
+	require.NoError(t, err)
+
+	// flush the in-memory buffer to disk
+	w_, ok := w.(*writer[int])
+	require.True(t, ok)
+
+	err = w_.rollFile()
+	require.NoError(t, err)
+
+	err = w.Close()
+	require.NoError(t, err)
+
+	// 2nd writer
+	w, err = NewWriter[int](Options{
+		Name: "int-wal",
+		Path: testPath,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(1), w.BlockNum())
+
+	err = w.Write(Block[int]{Number: 2})
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(2), w.BlockNum())
+
+	err = w.Close()
+	require.NoError(t, err)
+}
+
+func TestNoGapWriter_BlockNum(t *testing.T) {
+	defer testTeardown(t)
+
+	w, err := NewWriter[int](Options{
+		Name:       "int-wal",
+		Path:       testPath,
+		NewEncoder: NewJSONEncoder,
+	})
+	require.NoError(t, err)
+
+	ngw := NewWriterNoGap[int](w)
+	require.NotNil(t, w)
+
+	err = ngw.Write(Block[int]{Number: 1})
+	require.NoError(t, err)
+
+	err = ngw.Write(Block[int]{Number: 2})
+	require.NoError(t, err)
+
+	err = ngw.Write(Block[int]{Number: 3})
+	require.NoError(t, err)
+
+	err = ngw.Close()
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(3), w.BlockNum())
+}
+
 func Test_WriterStoragePathSuffix(t *testing.T) {
 	options := Options{
 		Name: "int-wal",
@@ -150,4 +220,74 @@ func Test_WriterStoragePathSuffix(t *testing.T) {
 	writer, ok := w.(*writer[int])
 	require.True(t, ok)
 	require.Equal(t, string(writer.path[len(writer.path)-1]), string(os.PathSeparator))
+}
+
+func BenchmarkWriter_Write(b *testing.B) {
+	defer func() {
+		_ = os.RemoveAll(testPath)
+	}()
+
+	testCase := []struct {
+		name    string
+		options Options
+	}{
+		{
+			name: "json",
+			options: Options{
+				Name:       "int-wal",
+				Path:       testPath,
+				NewEncoder: NewJSONEncoder,
+				NewDecoder: NewJSONDecoder,
+			},
+		},
+		{
+			name: "json-zstd",
+			options: Options{
+				Name:            "int-wal",
+				Path:            testPath,
+				NewEncoder:      NewJSONEncoder,
+				NewDecoder:      NewJSONDecoder,
+				NewCompressor:   NewZSTDCompressor,
+				NewDecompressor: NewZSTDDecompressor,
+			},
+		},
+		{
+			name: "cbor",
+			options: Options{
+				Name:       "int-wal",
+				Path:       testPath,
+				NewEncoder: NewCBOREncoder,
+				NewDecoder: NewCBORDecoder,
+			},
+		},
+		{
+			name: "cbor-zstd",
+			options: Options{
+				Name:            "int-wal",
+				Path:            testPath,
+				NewEncoder:      NewCBOREncoder,
+				NewDecoder:      NewCBORDecoder,
+				NewCompressor:   NewZSTDCompressor,
+				NewDecompressor: NewZSTDDecompressor,
+			},
+		},
+	}
+
+	for _, tc := range testCase {
+		b.Run(tc.name, func(b *testing.B) {
+			w, err := NewWriter[int](tc.options)
+			require.NoError(b, err)
+
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				for j := 0; j < 1000000; j++ {
+					err := w.Write(Block[int]{Number: uint64(i)})
+					require.NoError(b, err)
+				}
+			}
+
+			err = w.Close()
+			require.NoError(b, err)
+		})
+	}
 }

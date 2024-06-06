@@ -46,10 +46,6 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
 
-	if opt.FileRollPolicy == nil {
-		opt.FileRollPolicy = NewFileSizeRollPolicy(uint64(defaultBufferSize))
-	}
-
 	var (
 		fs  storage.FS
 		err error

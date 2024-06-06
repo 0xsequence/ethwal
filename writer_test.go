@@ -1,7 +1,7 @@
 package ethlogwal
 
 import (
-	"fmt"
+	"io"
 	"os"
 	"path"
 	"testing"
@@ -13,9 +13,6 @@ import (
 // TODO: write generic tests with diffrent encoders / decoders and compressors
 
 func TestWriter_Write(t *testing.T) {
-	testSetup(t)
-	defer testTeardown(t)
-
 	blocksFile := Blocks[int]{
 		{
 			Hash:   prototyp.HashFromBytes([]byte{0x01}),
@@ -43,49 +40,102 @@ func TestWriter_Write(t *testing.T) {
 		},
 	}
 
-	options := Options{
-		Name:       "int-wal",
-		Path:       testPath,
-		NewDecoder: NewBinaryDecoder,
+	testCase := []struct {
+		name    string
+		options Options
+	}{
+		{
+			name: "json",
+			options: Options{
+				Name:       "int-wal",
+				Path:       testPath,
+				NewEncoder: NewJSONEncoder,
+				NewDecoder: NewJSONDecoder,
+			},
+		},
+		{
+			name: "json-zstd",
+			options: Options{
+				Name:            "int-wal",
+				Path:            testPath,
+				NewEncoder:      NewJSONEncoder,
+				NewDecoder:      NewJSONDecoder,
+				NewCompressor:   NewZSTDCompressor,
+				NewDecompressor: NewZSTDDecompressor,
+			},
+		},
+		{
+			name: "cbor",
+			options: Options{
+				Name:       "int-wal",
+				Path:       testPath,
+				NewEncoder: NewCBOREncoder,
+				NewDecoder: NewCBORDecoder,
+			},
+		},
+		{
+			name: "cbor-zstd",
+			options: Options{
+				Name:            "int-wal",
+				Path:            testPath,
+				NewEncoder:      NewCBOREncoder,
+				NewDecoder:      NewCBORDecoder,
+				NewCompressor:   NewZSTDCompressor,
+				NewDecompressor: NewZSTDDecompressor,
+			},
+		},
 	}
 
-	w, err := NewWriter[int](options)
-	require.NoError(t, err)
+	for _, tc := range testCase {
+		t.Run(tc.name, func(t *testing.T) {
+			defer testTeardown(t)
 
-	for _, block := range blocksFile {
-		err := w.Write(block)
-		require.NoError(t, err)
+			w, err := NewWriter[int](tc.options)
+			require.NoError(t, err)
+
+			for _, block := range blocksFile {
+				err := w.Write(block)
+				require.NoError(t, err)
+			}
+
+			// flush the in-memory buffer to disk
+			w_, ok := w.(*writer[int])
+			require.True(t, ok)
+
+			err = w_.rollFile()
+			require.NoError(t, err)
+
+			err = w.Close()
+			require.NoError(t, err)
+
+			// check WAL files
+			filePath := path.Join(buildETHWALPath(tc.options.Name, tc.options.Path), "1_4.wal")
+			_, err = os.Stat(filePath)
+			require.NoError(t, err)
+
+			f, err := os.Open(filePath)
+			require.NoError(t, err)
+
+			var r io.ReadCloser = f
+			if tc.options.NewDecompressor != nil {
+				r = tc.options.NewDecompressor(r)
+			}
+
+			var dec = tc.options.NewDecoder(r)
+
+			var blocks Blocks[int]
+			for {
+				var block Block[int]
+				err := dec.Decode(&block)
+				if err != nil {
+					break
+				}
+				blocks = append(blocks, block)
+			}
+
+			require.Equal(t, blocksFile, blocks)
+		})
 	}
-
-	// flush the in-memory buffer to disk
-	w_, ok := w.(*writer[int])
-	require.True(t, ok)
-	w_.rollFile()
-
-	err = w.Close()
-	require.NoError(t, err)
-
-	// check WAL files
-	filePath := path.Join(testPath, "int-wal", fmt.Sprintf("%v", WALFormatVersion), "1_4.wal")
-	_, err = os.Stat(filePath)
-	require.NoError(t, err)
-
-	f, err := os.Open(filePath)
-	require.NoError(t, err)
-
-	var dec = options.NewDecoder(f)
-
-	var blocks Blocks[int]
-	for {
-		var block Block[int]
-		err := dec.Decode(&block)
-		if err != nil {
-			break
-		}
-		blocks = append(blocks, block)
-	}
-
-	require.Equal(t, blocksFile, blocks)
 }
 
 func Test_WriterStoragePathSuffix(t *testing.T) {

@@ -26,10 +26,10 @@ func NewJSONDecoder(r io.Reader) Decoder {
 	return json.NewDecoder(r)
 }
 
-func NewBinaryEncoder(w io.Writer) Encoder {
+func NewCBOREncoder(w io.Writer) Encoder {
 	return cbor.NewEncoder(w)
 }
 
-func NewBinaryDecoder(r io.Reader) Decoder {
+func NewCBORDecoder(r io.Reader) Decoder {
 	return cbor.NewDecoder(r)
 }

@@ -14,7 +14,7 @@ import (
 
 const testPath = ".tmp/ethwal"
 
-func testSetup(t *testing.T) {
+func testSetup(t *testing.T, newEncoder NewEncoderFunc, newCompressor NewCompressorFunc) {
 	blocksFile1 := Blocks[int]{
 		{
 			Hash:   prototyp.HashFromBytes([]byte{0x01}),
@@ -90,63 +90,131 @@ func testSetup(t *testing.T) {
 	f, err := os.OpenFile(path.Join(walDir, "1_4.wal"), os.O_CREATE|os.O_WRONLY, 0755)
 	require.NoError(t, err)
 
-	enc := NewBinaryEncoder(f)
+	var w io.WriteCloser = f
+	if newCompressor != nil {
+		w = newCompressor(f)
+	}
+
+	enc := newEncoder(w)
 	for _, blk := range blocksFile1 {
 		_ = enc.Encode(blk)
 	}
-	_ = f.Close()
+	_ = w.Close()
 
 	f, err = os.OpenFile(path.Join(walDir, "5_8.wal"), os.O_CREATE|os.O_WRONLY, 0755)
 	require.NoError(t, err)
 
-	enc = NewBinaryEncoder(f)
+	w = f
+	if newCompressor != nil {
+		w = newCompressor(f)
+	}
+
+	enc = newEncoder(w)
 	for _, blk := range blocksFile2 {
 		_ = enc.Encode(blk)
 	}
-	_ = f.Close()
+	_ = w.Close()
 
 	f, err = os.OpenFile(path.Join(walDir, "11_12.wal"), os.O_CREATE|os.O_WRONLY, 0755)
 	require.NoError(t, err)
 
-	enc = NewBinaryEncoder(f)
+	w = f
+	if newCompressor != nil {
+		w = newCompressor(f)
+	}
+
+	enc = newEncoder(w)
 	for _, blk := range blocksFile3 {
 		_ = enc.Encode(blk)
 	}
-	_ = f.Close()
+	_ = w.Close()
 }
 
 func testTeardown(t *testing.T) {
 	_ = os.RemoveAll(testPath)
 }
 
-func TestReader_All(t *testing.T) {
-	testSetup(t)
-	defer testTeardown(t)
-
-	rdr, err := NewReader[int](Options{
-		Name: "int-wal",
-		Path: testPath,
-	})
-	require.NoError(t, err)
-
-	var blk Block[int]
-	var blks []Block[int]
-	for blk, err = rdr.Read(); err == nil; blk, err = rdr.Read() {
-		t.Logf("blk: %+v", blk)
-		blks = append(blks, blk)
+func TestReader_Read(t *testing.T) {
+	testCase := []struct {
+		name    string
+		options Options
+	}{
+		{
+			name: "json",
+			options: Options{
+				Name:       "int-wal",
+				Path:       testPath,
+				NewEncoder: NewJSONEncoder,
+				NewDecoder: NewJSONDecoder,
+			},
+		},
+		{
+			name: "json-zstd",
+			options: Options{
+				Name:            "int-wal",
+				Path:            testPath,
+				NewEncoder:      NewJSONEncoder,
+				NewDecoder:      NewJSONDecoder,
+				NewCompressor:   NewZSTDCompressor,
+				NewDecompressor: NewZSTDDecompressor,
+			},
+		},
+		{
+			name: "cbor",
+			options: Options{
+				Name:       "int-wal",
+				Path:       testPath,
+				NewEncoder: NewCBOREncoder,
+				NewDecoder: NewCBORDecoder,
+			},
+		},
+		{
+			name: "cbor-zstd",
+			options: Options{
+				Name:            "int-wal",
+				Path:            testPath,
+				NewEncoder:      NewCBOREncoder,
+				NewDecoder:      NewCBORDecoder,
+				NewCompressor:   NewZSTDCompressor,
+				NewDecompressor: NewZSTDDecompressor,
+			},
+		},
 	}
 
-	require.Equal(t, io.EOF, err)
-	assert.Equal(t, 10, len(blks))
+	for _, tc := range testCase {
+		t.Run(tc.name, func(t *testing.T) {
+			testSetup(t, tc.options.NewEncoder, tc.options.NewCompressor)
+			defer testTeardown(t)
+
+			rdr, err := NewReader[int](tc.options)
+			require.NoError(t, err)
+
+			var blk Block[int]
+			var blks []Block[int]
+			for blk, err = rdr.Read(); err == nil; blk, err = rdr.Read() {
+				t.Logf("blk: %+v", blk)
+				blks = append(blks, blk)
+			}
+
+			require.Equal(t, io.EOF, err)
+			assert.Equal(t, 10, len(blks))
+
+			assert.Equal(t, rdr.BlockNum(), blks[len(blks)-1].Number)
+
+			assert.NoError(t, rdr.Close())
+		})
+	}
 }
 
 func TestReader_Seek(t *testing.T) {
-	testSetup(t)
+	testSetup(t, NewCBOREncoder, nil)
 	defer testTeardown(t)
 
 	rdr, err := NewReader[int](Options{
-		Name: "int-wal",
-		Path: testPath,
+		Name:       "int-wal",
+		Path:       testPath,
+		NewEncoder: NewCBOREncoder,
+		NewDecoder: NewCBORDecoder,
 	})
 	require.NoError(t, err)
 

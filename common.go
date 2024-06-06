@@ -40,10 +40,10 @@ type Options struct {
 
 func (o Options) WithDefaults() Options {
 	if o.NewEncoder == nil {
-		o.NewEncoder = NewBinaryEncoder
+		o.NewEncoder = NewCBOREncoder
 	}
 	if o.NewDecoder == nil {
-		o.NewDecoder = NewBinaryDecoder
+		o.NewDecoder = NewCBORDecoder
 	}
 	if o.FileRollPolicy == nil {
 		o.FileRollPolicy = NewFileSizeRollPolicy(uint64(defaultBufferSize))

@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: write generic tests with diffrent encoders / decoders and compressors
-
 func TestWriter_Write(t *testing.T) {
 	blocksFile := Blocks[int]{
 		{

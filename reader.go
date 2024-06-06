@@ -251,7 +251,6 @@ func (r *reader[T]) selectFileForRead(fromBlockNum uint64) error {
 		})
 
 		if index == walFilesLen {
-			// todo: try to refresh the wal file list
 			return io.EOF
 		}
 

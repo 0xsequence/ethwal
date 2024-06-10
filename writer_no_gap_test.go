@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,11 +12,11 @@ import (
 
 func TestWriterNoGap(t *testing.T) {
 	t.Run("nogap", func(t *testing.T) {
-		defer os.RemoveAll("wal")
+		defer testTeardown(t)
 
 		w, err := NewWriter[int](Options{
 			Name:       "int-wal",
-			Path:       "wal",
+			Path:       testPath,
 			NewEncoder: NewJSONEncoder,
 		})
 		require.NoError(t, err)
@@ -38,7 +39,7 @@ func TestWriterNoGap(t *testing.T) {
 		err = ngw.Close()
 		require.NoError(t, err)
 
-		walData, err := os.ReadFile("wal/int-wal/v5/1_3.wal")
+		walData, err := os.ReadFile(path.Join(testPath, "int-wal/v5/1_3.wal"))
 		require.NoError(t, err)
 
 		d := NewJSONDecoder(bytes.NewBuffer(walData))
@@ -54,11 +55,11 @@ func TestWriterNoGap(t *testing.T) {
 	})
 
 	t.Run("gap_3_10", func(t *testing.T) {
-		defer os.RemoveAll("wal")
+		defer testTeardown(t)
 
 		w, err := NewWriter[int](Options{
 			Name:       "int-wal",
-			Path:       "wal",
+			Path:       testPath,
 			NewEncoder: NewJSONEncoder,
 		})
 		require.NoError(t, err)
@@ -83,7 +84,7 @@ func TestWriterNoGap(t *testing.T) {
 		err = ngw.Close()
 		require.NoError(t, err)
 
-		walData, err := os.ReadFile("wal/int-wal/v5/1_10.wal")
+		walData, err := os.ReadFile(path.Join(testPath, "int-wal/v5/1_10.wal"))
 		require.NoError(t, err)
 
 		d := NewJSONDecoder(bytes.NewBuffer(walData))

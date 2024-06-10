@@ -1,6 +1,7 @@
 package ethlogwal
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testRoot = ".tmp"
 const testPath = ".tmp/ethwal"
 
 func testSetup(t *testing.T, newEncoder NewEncoderFunc, newCompressor NewCompressorFunc) {
@@ -131,7 +133,8 @@ func testSetup(t *testing.T, newEncoder NewEncoderFunc, newCompressor NewCompres
 }
 
 func testTeardown(t *testing.T) {
-	_ = os.RemoveAll(testPath)
+	fmt.Println("teardown")
+	_ = os.RemoveAll(testRoot)
 }
 
 func TestReader_Read(t *testing.T) {
@@ -309,6 +312,8 @@ func TestReader_Seek(t *testing.T) {
 }
 
 func Test_ReaderStoragePathSuffix(t *testing.T) {
+	defer testTeardown(t)
+
 	options := Options{
 		Name: "int-wal",
 		Path: testPath,

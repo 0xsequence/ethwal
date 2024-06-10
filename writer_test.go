@@ -207,6 +207,8 @@ func TestNoGapWriter_BlockNum(t *testing.T) {
 }
 
 func Test_WriterStoragePathSuffix(t *testing.T) {
+	defer testTeardown(t)
+
 	options := Options{
 		Name: "int-wal",
 		Path: testPath,

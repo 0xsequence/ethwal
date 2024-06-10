@@ -111,6 +111,9 @@ func (w *writer[T]) Write(b Block[T]) error {
 	}
 
 	w.lastBlockNum = b.Number
+	if p := w.options.FileRollPolicy.(LastBlockNumberRollPolicy); p != nil {
+		p.LastBlockNum(w.lastBlockNum)
+	}
 
 	return nil
 }
@@ -179,6 +182,9 @@ func (w *writer[T]) newFile() error {
 
 	// reset buffer
 	w.buffer.Reset()
+
+	// reset file roll policy
+	w.options.FileRollPolicy.Reset()
 
 	// create new buffer writer
 	bufferWriter := io.Writer(w.buffer)

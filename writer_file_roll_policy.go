@@ -38,7 +38,7 @@ func (p *fileSizeRollPolicy) ShouldRoll() bool {
 }
 
 func (p *fileSizeRollPolicy) Reset() {
-	p.stats.BytesWritten = 0
+	p.stats = &fileStats{}
 }
 
 // fileStats is a writer that keeps track of the number of bytes written to it.

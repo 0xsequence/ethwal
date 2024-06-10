@@ -2,13 +2,14 @@ package ethlogwal
 
 import (
 	"context"
+	"ethwal/storage"
+	"ethwal/storage/local"
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/Shopify/go-storage"
 )
 
 var (
@@ -27,6 +28,8 @@ type Options struct {
 	Path      string
 	CachePath string
 
+	FileSystem storage.FS
+
 	NewCompressor   NewCompressorFunc
 	NewDecompressor NewDecompressorFunc
 
@@ -34,11 +37,13 @@ type Options struct {
 	NewDecoder NewDecoderFunc
 
 	FileRollPolicy FileRollPolicy
-
-	GoogleCloudStorageBucket string
 }
 
 func (o Options) WithDefaults() Options {
+	if o.FileSystem == nil {
+		wd, _ := os.Getwd()
+		o.FileSystem = local.NewLocalFS(wd)
+	}
 	if o.NewEncoder == nil {
 		o.NewEncoder = NewCBOREncoder
 	}

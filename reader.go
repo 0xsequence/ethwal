@@ -3,14 +3,15 @@ package ethlogwal
 import (
 	"context"
 	"errors"
-	"ethwal/storage/gcloud"
 	"fmt"
 	"io"
 	"os"
 	"sort"
 	"sync"
 
-	"github.com/Shopify/go-storage"
+	"ethwal/storage"
+	"ethwal/storage/local"
+
 	"github.com/fatih/structs"
 )
 
@@ -50,40 +51,24 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
 
-	var (
-		fs  storage.FS
-		err error
-	)
-
+	// build WAL path
 	walPath := buildETHWALPath(opt.Name, opt.Path)
 	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
 		walPath = walPath + string(os.PathSeparator)
 	}
 
-	if opt.GoogleCloudStorageBucket != "" {
-		fs = storage.NewCloudStorageFS(opt.GoogleCloudStorageBucket, nil)
-		fs = gcloud.NewGoogleCloudChecksumStorage(fs)
-		fs = storage.NewPrefixWrapper(fs, walPath)
-
-		if opt.CachePath != "" {
-			if _, err = os.Stat(opt.CachePath); os.IsNotExist(err) {
-				err := os.MkdirAll(opt.CachePath, 0755)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create WAL directory")
-				}
-			}
-			fs = storage.NewCacheWrapper(fs, storage.NewLocalFS(opt.CachePath), nil)
-		}
-	} else {
-		if _, err = os.Stat(walPath); os.IsNotExist(err) {
+	// create WAL directory if it doesn't exist on local FS
+	if _, ok := opt.FileSystem.(*local.LocalFS); ok {
+		if _, err := os.Stat(walPath); os.IsNotExist(err) {
 			err := os.MkdirAll(walPath, 0755)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create WAL directory")
 			}
 		}
-
-		fs = storage.NewLocalFS(walPath)
 	}
+
+	// mount FS with WAL path prefix
+	fs := storage.NewPrefixWrapper(opt.FileSystem, walPath)
 
 	walFiles, err := listWALFiles(fs)
 	if err != nil {
@@ -213,7 +198,7 @@ func (r *reader[T]) readFile(index int) error {
 	}
 
 	wFile := r.walFiles[index]
-	file, err := r.fs.Open(context.Background(), wFile.Name, &storage.ReaderOptions{})
+	file, err := r.fs.Open(context.Background(), wFile.Name, nil)
 	if err != nil {
 		return err
 	}

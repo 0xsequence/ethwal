@@ -3,13 +3,14 @@ package ethlogwal
 import (
 	"bytes"
 	"context"
-	"ethwal/storage/gcloud"
 	"fmt"
 	"io"
 	"os"
 	"sync"
 
-	"github.com/Shopify/go-storage"
+	"ethwal/storage"
+	"ethwal/storage/local"
+
 	"github.com/c2h5oh/datasize"
 )
 
@@ -46,30 +47,24 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
 
-	var (
-		fs  storage.FS
-		err error
-	)
-
+	// build WAL path
 	walPath := buildETHWALPath(opt.Name, opt.Path)
 	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
 		walPath = walPath + string(os.PathSeparator)
 	}
 
-	if opt.GoogleCloudStorageBucket != "" {
-		fs = storage.NewCloudStorageFS(opt.GoogleCloudStorageBucket, nil)
-		fs = gcloud.NewGoogleCloudChecksumStorage(fs)
-		fs = storage.NewPrefixWrapper(fs, walPath)
-	} else {
-		if _, err = os.Stat(walPath); os.IsNotExist(err) {
+	// create WAL directory if it doesn't exist on local FS
+	if _, ok := opt.FileSystem.(*local.LocalFS); ok {
+		if _, err := os.Stat(walPath); os.IsNotExist(err) {
 			err := os.MkdirAll(walPath, 0755)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create WAL directory")
 			}
 		}
-
-		fs = storage.NewLocalFS(walPath)
 	}
+
+	// mount FS with WAL path prefix
+	fs := storage.NewPrefixWrapper(opt.FileSystem, walPath)
 
 	walFiles, err := listWALFiles(fs)
 	if err != nil {
@@ -111,7 +106,7 @@ func (w *writer[T]) Write(b Block[T]) error {
 	}
 
 	w.lastBlockNum = b.Number
-	if p := w.options.FileRollPolicy.(LastBlockNumberRollPolicy); p != nil {
+	if p, ok := w.options.FileRollPolicy.(LastBlockNumberRollPolicy); ok {
 		p.LastBlockNum(w.lastBlockNum)
 	}
 
@@ -158,7 +153,7 @@ func (w *writer[T]) writeFile() error {
 	f, err := w.fs.Create(
 		context.Background(),
 		fmt.Sprintf("%d_%d.wal", w.firstBlockNum, w.lastBlockNum),
-		&storage.WriterOptions{},
+		nil,
 	)
 	if err != nil {
 		return err

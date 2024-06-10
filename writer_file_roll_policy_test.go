@@ -26,6 +26,7 @@ func TestFileSizeRollPolicy(t *testing.T) {
 	assert.True(t, p.ShouldRoll())
 
 	p.Reset()
+	w = p.WrapWriter(buff)
 	assert.False(t, p.ShouldRoll())
 
 	_, err = w.Write([]byte("hello world"))

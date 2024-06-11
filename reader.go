@@ -47,15 +47,22 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	// apply default options on uninitialized fields
 	opt = opt.WithDefaults()
 
-	if opt.Name == "" {
+	if opt.Dataset.Name == "" {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
 
+	if opt.Dataset.Path == "" {
+		return nil, fmt.Errorf("wal path cannot be empty")
+	}
+
 	// build WAL path
-	walPath := buildETHWALPath(opt.Name, opt.Path)
+	walPath := buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path)
 	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
 		walPath = walPath + string(os.PathSeparator)
 	}
+
+	// set file system
+	fs := opt.FileSystem
 
 	// create WAL directory if it doesn't exist on local FS
 	if _, ok := opt.FileSystem.(*local.LocalFS); ok {
@@ -65,10 +72,21 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 				return nil, fmt.Errorf("failed to create WAL directory")
 			}
 		}
+	} else {
+		// add cache wrapper to file system, so that we can cache the files locally
+		if opt.Dataset.CachePath != "" {
+			if _, err := os.Stat(opt.Dataset.CachePath); os.IsNotExist(err) {
+				err := os.MkdirAll(opt.Dataset.CachePath, 0755)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create WAL directory")
+				}
+			}
+			fs = storage.NewCacheWrapper(fs, local.NewLocalFS(opt.Dataset.CachePath), nil)
+		}
 	}
 
-	// mount FS with WAL path prefix
-	fs := storage.NewPrefixWrapper(opt.FileSystem, walPath)
+	// add prefix to file system
+	fs = storage.NewPrefixWrapper(fs, walPath)
 
 	walFiles, err := listWALFiles(fs)
 	if err != nil {

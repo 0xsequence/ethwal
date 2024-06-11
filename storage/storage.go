@@ -7,3 +7,5 @@ type FS storage.FS
 type Walker storage.Walker
 
 var NewPrefixWrapper = storage.NewPrefixWrapper
+
+var NewCacheWrapper = storage.NewCacheWrapper

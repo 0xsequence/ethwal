@@ -86,7 +86,7 @@ func testSetup(t *testing.T, newEncoder NewEncoderFunc, newCompressor NewCompres
 		},
 	}
 
-	walDir := path.Join(testPath, "int-wal", WALFormatVersion)
+	walDir := path.Join(testPath, "int-wal", defaultDatasetVersion)
 	_ = os.MkdirAll(walDir, 0755)
 
 	f, err := os.OpenFile(path.Join(walDir, "1_4.wal"), os.O_CREATE|os.O_WRONLY, 0755)
@@ -145,8 +145,10 @@ func TestReader_Read(t *testing.T) {
 		{
 			name: "json",
 			options: Options{
-				Name:       "int-wal",
-				Path:       testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder: NewJSONEncoder,
 				NewDecoder: NewJSONDecoder,
 			},
@@ -154,8 +156,10 @@ func TestReader_Read(t *testing.T) {
 		{
 			name: "json-zstd",
 			options: Options{
-				Name:            "int-wal",
-				Path:            testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder:      NewJSONEncoder,
 				NewDecoder:      NewJSONDecoder,
 				NewCompressor:   NewZSTDCompressor,
@@ -165,8 +169,10 @@ func TestReader_Read(t *testing.T) {
 		{
 			name: "cbor",
 			options: Options{
-				Name:       "int-wal",
-				Path:       testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder: NewCBOREncoder,
 				NewDecoder: NewCBORDecoder,
 			},
@@ -174,8 +180,10 @@ func TestReader_Read(t *testing.T) {
 		{
 			name: "cbor-zstd",
 			options: Options{
-				Name:            "int-wal",
-				Path:            testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder:      NewCBOREncoder,
 				NewDecoder:      NewCBORDecoder,
 				NewCompressor:   NewZSTDCompressor,
@@ -212,8 +220,10 @@ func TestReader_NumWALFiles(t *testing.T) {
 	defer testTeardown(t)
 
 	rdr, err := NewReader[int](Options{
-		Name:       "int-wal",
-		Path:       testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 		NewEncoder: NewCBOREncoder,
 		NewDecoder: NewCBORDecoder,
 	})
@@ -229,8 +239,10 @@ func TestReader_BlockNum(t *testing.T) {
 	defer testTeardown(t)
 
 	rdr, err := NewReader[int](Options{
-		Name:       "int-wal",
-		Path:       testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 		NewEncoder: NewCBOREncoder,
 		NewDecoder: NewCBORDecoder,
 	})
@@ -268,8 +280,10 @@ func TestReader_Seek(t *testing.T) {
 	defer testTeardown(t)
 
 	rdr, err := NewReader[int](Options{
-		Name:       "int-wal",
-		Path:       testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 		NewEncoder: NewCBOREncoder,
 		NewDecoder: NewCBORDecoder,
 	})
@@ -315,8 +329,10 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 	defer testTeardown(t)
 
 	options := Options{
-		Name: "int-wal",
-		Path: testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 	}
 
 	r, err := NewReader[[]types.Log](options)

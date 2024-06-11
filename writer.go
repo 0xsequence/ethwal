@@ -43,12 +43,19 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	// apply default options on uninitialized fields
 	opt = opt.WithDefaults()
 
-	if opt.Name == "" {
+	if opt.Dataset.Name == "" {
 		return nil, fmt.Errorf("wal name cannot be empty")
 	}
 
+	if opt.Dataset.Path == "" {
+		return nil, fmt.Errorf("wal path cannot be empty")
+	}
+
 	// build WAL path
-	walPath := buildETHWALPath(opt.Name, opt.Path)
+	walPath := buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path)
+	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
+		walPath = walPath + string(os.PathSeparator)
+	}
 	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
 		walPath = walPath + string(os.PathSeparator)
 	}

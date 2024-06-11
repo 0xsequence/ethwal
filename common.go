@@ -12,21 +12,23 @@ import (
 	"strings"
 )
 
-var (
-	WALFormatVersion = "v5"
-)
-
 type walFile struct {
 	Name          string
 	FirstBlockNum uint64
 	LastBlockNum  uint64
 }
 
-type Options struct {
-	Name string
+const defaultDatasetVersion = "v1"
 
+type Dataset struct {
+	Name      string
+	Version   string
 	Path      string
 	CachePath string
+}
+
+type Options struct {
+	Dataset Dataset
 
 	FileSystem storage.FS
 
@@ -40,6 +42,9 @@ type Options struct {
 }
 
 func (o Options) WithDefaults() Options {
+	if o.Dataset.Version == "" {
+		o.Dataset.Version = defaultDatasetVersion
+	}
 	if o.FileSystem == nil {
 		wd, _ := os.Getwd()
 		o.FileSystem = local.NewLocalFS(wd)
@@ -69,8 +74,8 @@ func (f *funcCloser) Close() error {
 }
 
 // buildETHWALPath returns the path to the WAL directory
-func buildETHWALPath(name, p string) string {
-	return path.Join(p, name, WALFormatVersion)
+func buildETHWALPath(name, version, walPath string) string {
+	return path.Join(walPath, name, version)
 }
 
 // parseWALFileBlockRange reads first and last block number stored in WAL file from file name

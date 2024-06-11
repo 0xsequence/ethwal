@@ -46,8 +46,10 @@ func TestWriter_Write(t *testing.T) {
 		{
 			name: "json",
 			options: Options{
-				Name:       "int-wal",
-				Path:       testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder: NewJSONEncoder,
 				NewDecoder: NewJSONDecoder,
 			},
@@ -55,8 +57,10 @@ func TestWriter_Write(t *testing.T) {
 		{
 			name: "json-zstd",
 			options: Options{
-				Name:            "int-wal",
-				Path:            testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder:      NewJSONEncoder,
 				NewDecoder:      NewJSONDecoder,
 				NewCompressor:   NewZSTDCompressor,
@@ -66,8 +70,10 @@ func TestWriter_Write(t *testing.T) {
 		{
 			name: "cbor",
 			options: Options{
-				Name:       "int-wal",
-				Path:       testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder: NewCBOREncoder,
 				NewDecoder: NewCBORDecoder,
 			},
@@ -75,8 +81,10 @@ func TestWriter_Write(t *testing.T) {
 		{
 			name: "cbor-zstd",
 			options: Options{
-				Name:            "int-wal",
-				Path:            testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder:      NewCBOREncoder,
 				NewDecoder:      NewCBORDecoder,
 				NewCompressor:   NewZSTDCompressor,
@@ -88,6 +96,8 @@ func TestWriter_Write(t *testing.T) {
 	for _, tc := range testCase {
 		t.Run(tc.name, func(t *testing.T) {
 			defer testTeardown(t)
+
+			tc.options = tc.options.WithDefaults()
 
 			w, err := NewWriter[int](tc.options)
 			require.NoError(t, err)
@@ -108,7 +118,7 @@ func TestWriter_Write(t *testing.T) {
 			require.NoError(t, err)
 
 			// check WAL files
-			filePath := path.Join(buildETHWALPath(tc.options.Name, tc.options.Path), "1_4.wal")
+			filePath := path.Join(buildETHWALPath(tc.options.Dataset.Name, tc.options.Dataset.Version, tc.options.Dataset.Path), "1_4.wal")
 			_, err = os.Stat(filePath)
 			require.NoError(t, err)
 
@@ -142,8 +152,10 @@ func TestWriter_Continue(t *testing.T) {
 
 	// 1st writer
 	w, err := NewWriter[int](Options{
-		Name: "int-wal",
-		Path: testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 	})
 	require.NoError(t, err)
 
@@ -162,8 +174,10 @@ func TestWriter_Continue(t *testing.T) {
 
 	// 2nd writer
 	w, err = NewWriter[int](Options{
-		Name: "int-wal",
-		Path: testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 	})
 	require.NoError(t, err)
 
@@ -182,8 +196,10 @@ func TestNoGapWriter_BlockNum(t *testing.T) {
 	defer testTeardown(t)
 
 	w, err := NewWriter[int](Options{
-		Name:       "int-wal",
-		Path:       testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 		NewEncoder: NewJSONEncoder,
 	})
 	require.NoError(t, err)
@@ -210,8 +226,10 @@ func Test_WriterStoragePathSuffix(t *testing.T) {
 	defer testTeardown(t)
 
 	options := Options{
-		Name: "int-wal",
-		Path: testPath,
+		Dataset: Dataset{
+			Name: "int-wal",
+			Path: testPath,
+		},
 	}
 
 	w, err := NewWriter[int](options)
@@ -234,8 +252,10 @@ func BenchmarkWriter_Write(b *testing.B) {
 		{
 			name: "json",
 			options: Options{
-				Name:       "int-wal",
-				Path:       testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder: NewJSONEncoder,
 				NewDecoder: NewJSONDecoder,
 			},
@@ -243,8 +263,10 @@ func BenchmarkWriter_Write(b *testing.B) {
 		{
 			name: "json-zstd",
 			options: Options{
-				Name:            "int-wal",
-				Path:            testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder:      NewJSONEncoder,
 				NewDecoder:      NewJSONDecoder,
 				NewCompressor:   NewZSTDCompressor,
@@ -254,8 +276,10 @@ func BenchmarkWriter_Write(b *testing.B) {
 		{
 			name: "cbor",
 			options: Options{
-				Name:       "int-wal",
-				Path:       testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder: NewCBOREncoder,
 				NewDecoder: NewCBORDecoder,
 			},
@@ -263,8 +287,10 @@ func BenchmarkWriter_Write(b *testing.B) {
 		{
 			name: "cbor-zstd",
 			options: Options{
-				Name:            "int-wal",
-				Path:            testPath,
+				Dataset: Dataset{
+					Name: "int-wal",
+					Path: testPath,
+				},
 				NewEncoder:      NewCBOREncoder,
 				NewDecoder:      NewCBORDecoder,
 				NewCompressor:   NewZSTDCompressor,

@@ -4,7 +4,7 @@ A simple library for creating Ethereum based flat file datasets.
 
 ## Usage
 
-The library consists of two main components, the `Writer` and the `Reader`. Each reader and writer needs to specify it's name and path. The name is used to identify the dataset, and the path is used to specify the directory where the dataset is stored.
+The library consists of two main components, the `Writer` and the `Reader`. Each reader and writer needs to specify dataset name and path. The name is used to identify the dataset, and the path is used to specify the directory where the dataset is stored.
 They may use ``json`` or ``cbor`` encoding for the data as well as ``zstd`` compression. The other custom encoders and compressors can be added by implementing the `ethwal.Encoder` and `ethwal.Compressor` interfaces.
 
 The writer supports file roll over strategies such as: rolling over every Nth block, or after writing a certain amount of data.
@@ -23,9 +23,11 @@ import (
 
 func main() {
 	w := ethwal.NewWriter[[]types.EventLog](ethwal.Options{
-		Name:           "event-logs",
-		Path:           "data",
-		FileRollPolicy: ethwal.NewFileSizeRollPolicy(256), /* 256B */
+		Dataset: Dataset{
+			Name: "event-logs",
+			Path: "data",
+		},
+		FileRollPolicy: ethwal.NewFileSizeRollPolicy(2 << 20), /* 2 MB */
 	})
 
 	err := &w.Write(ethwal.Block[[]types.EventLog]{
@@ -62,8 +64,10 @@ import "github.com/0xsequence/ethkit/ethmonitor"
 
 func main() {
 	r := ethwal.NewReader[[]types.EventLog](ethwal.Options{
-		Name: "event-logs",
-		Path: "data",
+		Dataset: Dataset{
+			Name: "event-logs",
+			Path: "data",
+		},
 	})
 
 	// Read all the blocks

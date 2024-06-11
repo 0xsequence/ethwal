@@ -33,7 +33,7 @@ func main() {
 	err := &w.Write(ethwal.Block[[]types.EventLog]{
 		Number: 1,
 		Hash:   "0x123",
-		Events: []types.EventLog{
+		Data: []types.EventLog{
 			{
 				Address: "0x123",
 				Topics: []common.Hash{
@@ -76,7 +76,7 @@ func main() {
 	for b, err = r.Read(); err == nil; b, err = r.Read() {
 		fmt.Println(b.Number)
 		fmt.Println(b.Hash)
-		fmt.Println(b.Events)
+		fmt.Println(b.Data)
 	}
 	
 	if err != nil && err != io.EOF {

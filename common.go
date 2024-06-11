@@ -74,6 +74,7 @@ func (f *funcCloser) Close() error {
 }
 
 // buildETHWALPath returns the path to the WAL directory
+// The path is built as follows: <walPath>/<name>/<version>
 func buildETHWALPath(name, version, walPath string) string {
 	return path.Join(walPath, name, version)
 }

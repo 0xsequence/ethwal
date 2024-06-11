@@ -1,4 +1,4 @@
-package ethlogwal
+package ethwal
 
 import "github.com/0xsequence/go-sequence/lib/prototyp"
 

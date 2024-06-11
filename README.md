@@ -17,41 +17,47 @@ package main
 import (
 	"fmt"
 
-	"github.com/0xsequence/ethkit/ethmonitor"
-	"github.com/ethereum/go-ethereum/types"
+	"github.com/0xsequence/ethwal"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 func main() {
-	w := ethwal.NewWriter[[]types.EventLog](ethwal.Options{
-		Dataset: Dataset{
+	w, err := ethwal.NewWriter[[]types.Log](ethwal.Options{
+		Dataset: ethwal.Dataset{
 			Name: "event-logs",
 			Path: "data",
 		},
-		FileRollPolicy: ethwal.NewFileSizeRollPolicy(2 << 20), /* 2 MB */
-	})
-
-	err := &w.Write(ethwal.Block[[]types.EventLog]{
-		Number: 1,
-		Hash:   "0x123",
-		Data: []types.EventLog{
-			{
-				Address: "0x123",
-				Topics: []common.Hash{
-					"0x123",
-				},
-				Data: []byte("0x123"),
-			},
-		},
+		FileRollPolicy: ethwal.NewFileSizeRollPolicy(128 << 10), /* 128 KB */
 	})
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	...
+	for i := 0; i < 1000; i++ {
+		err = w.Write(ethwal.Block[[]types.Log]{
+			Number: uint64(i),
+			Hash:   "0x123",
+			Data: []types.Log{
+				{
+					Address: common.HexToAddress("0x123"),
+					Topics: []common.Hash{
+						common.HexToHash("0x123"),
+					},
+					Data: []byte("0x123"),
+				},
+			},
+		})
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
 
 	// Close the writer
 	w.Close()
+}
 }
 ```
 
@@ -60,31 +66,40 @@ func main() {
 ```go
 package main
 
-import "github.com/0xsequence/ethkit/ethmonitor"
+import (
+	"fmt"
+	"io"
+
+	"github.com/0xsequence/ethwal"
+	"github.com/ethereum/go-ethereum/core/types"
+)
 
 func main() {
-	r := ethwal.NewReader[[]types.EventLog](ethwal.Options{
-		Dataset: Dataset{
+	r, err := ethwal.NewReader[[]types.Log](ethwal.Options{
+		Dataset: ethwal.Dataset{
 			Name: "event-logs",
 			Path: "data",
 		},
 	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
 	// Read all the blocks
-	var err error
-	var b ethmonitor.Block[[]types.EventLog]
+	var b ethwal.Block[[]types.Log]
 	for b, err = r.Read(); err == nil; b, err = r.Read() {
 		fmt.Println(b.Number)
 		fmt.Println(b.Hash)
 		fmt.Println(b.Data)
 	}
-	
+
 	if err != nil && err != io.EOF {
 		fmt.Println(err)
 		return
 	}
 
-	// Close the reader 
+	// Close the reader
 	r.Close()
 }
 ```

@@ -1,4 +1,4 @@
-package ethlogwal
+package ethwal
 
 type noGapWriter[T any] struct {
 	w Writer[T]

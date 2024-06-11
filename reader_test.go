@@ -1,4 +1,4 @@
-package ethlogwal
+package ethwal
 
 import (
 	"fmt"
@@ -7,7 +7,6 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/go-sequence/lib/prototyp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -335,9 +334,9 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 		},
 	}
 
-	r, err := NewReader[[]types.Log](options)
+	r, err := NewReader[int](options)
 	require.NoError(t, err)
-	reader, ok := r.(*reader[[]types.Log])
+	reader, ok := r.(*reader[int])
 	require.True(t, ok)
 	require.Equal(t, string(reader.path[len(reader.path)-1]), string(os.PathSeparator))
 }

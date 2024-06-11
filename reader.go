@@ -1,4 +1,4 @@
-package ethlogwal
+package ethwal
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 	"sort"
 	"sync"
 
-	"ethwal/storage"
-	"ethwal/storage/local"
-
 	"github.com/fatih/structs"
+
+	"github.com/0xsequence/ethwal/storage"
+	"github.com/0xsequence/ethwal/storage/local"
 )
 
 const firstFileIndex = 0

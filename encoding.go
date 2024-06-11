@@ -1,4 +1,4 @@
-package ethlogwal
+package ethwal
 
 import (
 	"encoding/json"

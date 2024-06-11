@@ -1,4 +1,4 @@
-package ethlogwal
+package ethwal
 
 import (
 	"bytes"
@@ -8,10 +8,10 @@ import (
 	"os"
 	"sync"
 
-	"ethwal/storage"
-	"ethwal/storage/local"
-
 	"github.com/c2h5oh/datasize"
+
+	"github.com/0xsequence/ethwal/storage"
+	"github.com/0xsequence/ethwal/storage/local"
 )
 
 const defaultBufferSize = 8 * datasize.MB

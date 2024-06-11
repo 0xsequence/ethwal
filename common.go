@@ -1,15 +1,16 @@
-package ethlogwal
+package ethwal
 
 import (
 	"context"
-	"ethwal/storage"
-	"ethwal/storage/local"
 	"fmt"
 	"os"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/0xsequence/ethwal/storage"
+	"github.com/0xsequence/ethwal/storage/local"
 )
 
 type walFile struct {

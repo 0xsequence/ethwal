@@ -7,10 +7,12 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xsequence/go-sequence/lib/prototyp"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const defaultDatasetVersion = "v1"
 
 const testRoot = ".tmp"
 const testPath = ".tmp/ethwal"
@@ -18,25 +20,25 @@ const testPath = ".tmp/ethwal"
 func testSetup(t *testing.T, newEncoder NewEncoderFunc, newCompressor NewCompressorFunc) {
 	blocksFile1 := Blocks[int]{
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x01}),
+			Hash:   common.BytesToHash([]byte{0x01}),
 			Number: 1,
 			TS:     0,
 			Data:   0,
 		},
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x02}),
+			Hash:   common.BytesToHash([]byte{0x02}),
 			Number: 2,
 			TS:     0,
 			Data:   0,
 		},
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x03}),
+			Hash:   common.BytesToHash([]byte{0x03}),
 			Number: 3,
 			TS:     0,
 			Data:   0,
 		},
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x04}),
+			Hash:   common.BytesToHash([]byte{0x04}),
 			Number: 4,
 			TS:     0,
 			Data:   0,
@@ -45,25 +47,25 @@ func testSetup(t *testing.T, newEncoder NewEncoderFunc, newCompressor NewCompres
 
 	blocksFile2 := Blocks[int]{
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x05}),
+			Hash:   common.BytesToHash([]byte{0x05}),
 			Number: 5,
 			TS:     0,
 			Data:   0,
 		},
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x06}),
+			Hash:   common.BytesToHash([]byte{0x06}),
 			Number: 6,
 			TS:     0,
 			Data:   0,
 		},
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x07}),
+			Hash:   common.BytesToHash([]byte{0x07}),
 			Number: 7,
 			TS:     0,
 			Data:   0,
 		},
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x08}),
+			Hash:   common.BytesToHash([]byte{0x08}),
 			Number: 8,
 			TS:     0,
 			Data:   0,
@@ -72,13 +74,13 @@ func testSetup(t *testing.T, newEncoder NewEncoderFunc, newCompressor NewCompres
 
 	blocksFile3 := Blocks[int]{
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x0b}),
+			Hash:   common.BytesToHash([]byte{0x0b}),
 			Number: 11,
 			TS:     0,
 			Data:   0,
 		},
 		{
-			Hash:   prototyp.HashFromBytes([]byte{0x0c}),
+			Hash:   common.BytesToHash([]byte{0x0c}),
 			Number: 12,
 			TS:     0,
 			Data:   0,
@@ -145,8 +147,9 @@ func TestReader_Read(t *testing.T) {
 			name: "json",
 			options: Options{
 				Dataset: Dataset{
-					Name: "int-wal",
-					Path: testPath,
+					Name:    "int-wal",
+					Path:    testPath,
+					Version: defaultDatasetVersion,
 				},
 				NewEncoder: NewJSONEncoder,
 				NewDecoder: NewJSONDecoder,
@@ -156,8 +159,9 @@ func TestReader_Read(t *testing.T) {
 			name: "json-zstd",
 			options: Options{
 				Dataset: Dataset{
-					Name: "int-wal",
-					Path: testPath,
+					Name:    "int-wal",
+					Path:    testPath,
+					Version: defaultDatasetVersion,
 				},
 				NewEncoder:      NewJSONEncoder,
 				NewDecoder:      NewJSONDecoder,
@@ -169,8 +173,9 @@ func TestReader_Read(t *testing.T) {
 			name: "cbor",
 			options: Options{
 				Dataset: Dataset{
-					Name: "int-wal",
-					Path: testPath,
+					Name:    "int-wal",
+					Path:    testPath,
+					Version: defaultDatasetVersion,
 				},
 				NewEncoder: NewCBOREncoder,
 				NewDecoder: NewCBORDecoder,
@@ -180,8 +185,9 @@ func TestReader_Read(t *testing.T) {
 			name: "cbor-zstd",
 			options: Options{
 				Dataset: Dataset{
-					Name: "int-wal",
-					Path: testPath,
+					Name:    "int-wal",
+					Path:    testPath,
+					Version: defaultDatasetVersion,
 				},
 				NewEncoder:      NewCBOREncoder,
 				NewDecoder:      NewCBORDecoder,
@@ -220,8 +226,9 @@ func TestReader_NumWALFiles(t *testing.T) {
 
 	rdr, err := NewReader[int](Options{
 		Dataset: Dataset{
-			Name: "int-wal",
-			Path: testPath,
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
 		},
 		NewEncoder: NewCBOREncoder,
 		NewDecoder: NewCBORDecoder,
@@ -239,8 +246,9 @@ func TestReader_BlockNum(t *testing.T) {
 
 	rdr, err := NewReader[int](Options{
 		Dataset: Dataset{
-			Name: "int-wal",
-			Path: testPath,
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
 		},
 		NewEncoder: NewCBOREncoder,
 		NewDecoder: NewCBORDecoder,
@@ -280,8 +288,9 @@ func TestReader_Seek(t *testing.T) {
 
 	rdr, err := NewReader[int](Options{
 		Dataset: Dataset{
-			Name: "int-wal",
-			Path: testPath,
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
 		},
 		NewEncoder: NewCBOREncoder,
 		NewDecoder: NewCBORDecoder,
@@ -329,8 +338,9 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 
 	options := Options{
 		Dataset: Dataset{
-			Name: "int-wal",
-			Path: testPath,
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
 		},
 	}
 

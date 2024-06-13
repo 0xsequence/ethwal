@@ -47,10 +47,6 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	// apply default options on uninitialized fields
 	opt = opt.WithDefaults()
 
-	if opt.Dataset.Name == "" {
-		return nil, fmt.Errorf("wal name cannot be empty")
-	}
-
 	if opt.Dataset.Path == "" {
 		return nil, fmt.Errorf("wal path cannot be empty")
 	}

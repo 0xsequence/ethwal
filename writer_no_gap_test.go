@@ -16,8 +16,9 @@ func TestWriterNoGap(t *testing.T) {
 
 		opt := Options{
 			Dataset: Dataset{
-				Name: "int-wal",
-				Path: testPath,
+				Name:    "int-wal",
+				Path:    testPath,
+				Version: defaultDatasetVersion,
 			},
 			NewEncoder: NewJSONEncoder,
 		}.WithDefaults()
@@ -65,8 +66,9 @@ func TestWriterNoGap(t *testing.T) {
 
 		opt := Options{
 			Dataset: Dataset{
-				Name: "int-wal",
-				Path: testPath,
+				Name:    "int-wal",
+				Path:    testPath,
+				Version: defaultDatasetVersion,
 			},
 			NewEncoder: NewJSONEncoder,
 		}.WithDefaults()

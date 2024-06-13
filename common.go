@@ -19,8 +19,6 @@ type walFile struct {
 	LastBlockNum  uint64
 }
 
-const defaultDatasetVersion = "v1"
-
 type Dataset struct {
 	Name      string
 	Version   string
@@ -39,13 +37,11 @@ type Options struct {
 	NewEncoder NewEncoderFunc
 	NewDecoder NewDecoderFunc
 
-	FileRollPolicy FileRollPolicy
+	FileRollPolicy  FileRollPolicy
+	FileRollOnClose bool
 }
 
 func (o Options) WithDefaults() Options {
-	if o.Dataset.Version == "" {
-		o.Dataset.Version = defaultDatasetVersion
-	}
 	if o.FileSystem == nil {
 		wd, _ := os.Getwd()
 		o.FileSystem = local.NewLocalFS(wd)
@@ -75,8 +71,18 @@ func (f *funcCloser) Close() error {
 }
 
 // buildETHWALPath returns the path to the WAL directory
-// The path is built as follows: <walPath>/<name>/<version>
+// The path is built as follows: <walPath>/<name?>/<version?>
 func buildETHWALPath(name, version, walPath string) string {
+	var parts = []string{walPath}
+
+	if name != "" {
+		parts = append(parts, name)
+	}
+
+	if version != "" {
+		parts = append(parts, version)
+	}
+
 	return path.Join(walPath, name, version)
 }
 

@@ -43,10 +43,6 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	// apply default options on uninitialized fields
 	opt = opt.WithDefaults()
 
-	if opt.Dataset.Name == "" {
-		return nil, fmt.Errorf("wal name cannot be empty")
-	}
-
 	if opt.Dataset.Path == "" {
 		return nil, fmt.Errorf("wal path cannot be empty")
 	}
@@ -127,6 +123,29 @@ func (w *writer[T]) BlockNum() uint64 {
 }
 
 func (w *writer[T]) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.options.FileRollOnClose {
+		// close previous buffer and write file to fs
+		if w.bufferCloser != nil {
+			// skip if there are no blocks to write
+			if w.lastBlockNum < w.firstBlockNum {
+				return nil
+			}
+
+			err := w.bufferCloser.Close()
+			if err != nil {
+				return err
+			}
+
+			err = w.writeFile()
+			if err != nil {
+				return err
+			}
+		}
+		w.bufferCloser = nil
+	}
 	return nil
 }
 

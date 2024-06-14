@@ -193,8 +193,7 @@ func main() {
 						break
 					}
 
-					// cbor deserializes into map[interface{}]interface{} which is not very useful
-					// if piped with ethwalcat writer we probably shouldn't do that
+					// cbor deserializes into map[interface{}]interface{} which can not be serialized into json
 					if context.String(DecoderFlag.Name) == "cbor" {
 						b.Data = normalizeDataFromCBOR(b.Data)
 					}

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethwal"
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/gcloud"
@@ -81,13 +83,6 @@ var FileRollOnCloseFlag = &cli.BoolFlag{
 var GoogleCloudBucket = &cli.StringFlag{
 	Name:  "google-cloud-bucket",
 	Usage: "google cloud bucket",
-}
-
-func mode(context *cli.Context) string {
-	if context.String(DatasetPathFlag.Name) != "" {
-		return "read"
-	}
-	return "write"
 }
 
 func encoder(context *cli.Context) (ethwal.NewEncoderFunc, error) {
@@ -198,6 +193,11 @@ func main() {
 						break
 					}
 
+					// cbor deserializes into map[interface{}]interface{} which can not be serialized into json
+					if context.String(DecoderFlag.Name) == "cbor" {
+						b.Data = normalizeDataFromCBOR(b.Data)
+					}
+
 					data, err := json.Marshal(b)
 					if err != nil {
 
@@ -258,6 +258,11 @@ func main() {
 						return err
 					}
 
+					// cbor needs to have hashes represented as byte slices
+					if context.String(EncoderFlag.Name) == "cbor" {
+						b.Data = normalizeDataToCBOR(b.Data)
+					}
+
 					err = w.Write(b)
 					if err != nil {
 						return err
@@ -273,7 +278,7 @@ func main() {
 					return err
 				}
 			default:
-				return fmt.Errorf("unknown mode: %s", mode(context))
+				return fmt.Errorf("unknown mode: %s", context.String(ModeFlag.Name))
 			}
 
 			return nil
@@ -283,4 +288,28 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
 	}
+}
+
+func normalizeDataFromCBOR(data any) any {
+	if m, ok := data.(map[any]any); ok {
+		var mr = make(map[string]any)
+		for k, v := range m {
+			mr[k.(string)] = normalizeDataFromCBOR(v)
+		}
+		return mr
+	} else if arr, ok := data.([]any); ok {
+		for i, v := range arr {
+			arr[i] = normalizeDataFromCBOR(v)
+		}
+	} else if b, ok := data.([]byte); ok {
+		return fmt.Sprintf("0x%s", common.Bytes2Hex(b))
+	}
+	return data
+}
+
+func normalizeDataToCBOR(data any) any {
+	if b, ok := data.(string); ok && strings.HasPrefix(b, "0x") {
+		return common.Hex2Bytes(b)
+	}
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"strings"
 
@@ -302,6 +303,9 @@ func normalizeDataFromCBOR(data any) any {
 			arr[i] = normalizeDataFromCBOR(v)
 		}
 	} else if b, ok := data.([]byte); ok {
+		if i, ok := big.NewInt(0).SetString(strings.ReplaceAll(string(b), "\"", ""), 10); ok {
+			return i.String()
+		}
 		return fmt.Sprintf("0x%s", common.Bytes2Hex(b))
 	}
 	return data

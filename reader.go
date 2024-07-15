@@ -33,7 +33,7 @@ type reader[T any] struct {
 
 	closer io.Closer
 
-	walFiles       []walFile
+	walFiles       []WALFile
 	currentWALFile int
 
 	lastBlockNum uint64
@@ -84,7 +84,7 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	// add prefix to file system
 	fs = storage.NewPrefixWrapper(fs, walPath)
 
-	walFiles, err := listWALFiles(fs)
+	walFiles, err := ListWALFiles(fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load WAL file list: %w", err)
 	}

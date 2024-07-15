@@ -1,6 +1,6 @@
 module github.com/0xsequence/ethwal
 
-go 1.21.5
+go 1.22
 
 require (
 	cloud.google.com/go/storage v1.41.0

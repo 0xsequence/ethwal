@@ -69,7 +69,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	// mount FS with WAL path prefix
 	fs := storage.NewPrefixWrapper(opt.FileSystem, walPath)
 
-	walFiles, err := listWALFiles(fs)
+	walFiles, err := ListWALFiles(fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load WAL file list: %w", err)
 	}

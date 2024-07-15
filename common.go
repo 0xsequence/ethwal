@@ -13,7 +13,7 @@ import (
 	"github.com/0xsequence/ethwal/storage/local"
 )
 
-type walFile struct {
+type WALFile struct {
 	Name          string
 	FirstBlockNum uint64
 	LastBlockNum  uint64
@@ -24,6 +24,14 @@ type Dataset struct {
 	Version   string
 	Path      string
 	CachePath string
+}
+
+func (d Dataset) FullPath() string {
+	return buildETHWALPath(d.Name, d.Version, d.Path)
+}
+
+func (d Dataset) FullCachePath() string {
+	return buildETHWALPath(d.Name, d.Version, d.CachePath)
 }
 
 type Options struct {
@@ -86,8 +94,8 @@ func buildETHWALPath(name, version, walPath string) string {
 	return path.Join(walPath, name, version)
 }
 
-// parseWALFileBlockRange reads first and last block number stored in WAL file from file name
-func parseWALFileBlockRange(filePath string) (uint64, uint64) {
+// ParseWALFileBlockRange reads first and last block number stored in WAL file from file name
+func ParseWALFileBlockRange(filePath string) (uint64, uint64) {
 	_, fileName := path.Split(filePath)
 	fileNameSplit := strings.Split(fileName, ".")
 	blockNumberSplit := strings.Split(fileNameSplit[0], "_")
@@ -98,14 +106,14 @@ func parseWALFileBlockRange(filePath string) (uint64, uint64) {
 	return uint64(first), uint64(last)
 }
 
-// listWALFiles lists all WAL files in the provided file system
-func listWALFiles(fs storage.FS) ([]walFile, error) {
+// ListWALFiles lists all WAL files in the provided file system
+func ListWALFiles(fs storage.FS) ([]WALFile, error) {
 	wlk, ok := fs.(storage.Walker)
 	if !ok {
 		return nil, fmt.Errorf("ethlogwal: provided file system does not implement Walker interface")
 	}
 
-	var walFiles []walFile
+	var walFiles []WALFile
 	err := wlk.Walk(context.Background(), "", func(filePath string) error {
 		// walk only wal files
 		if path.Ext(filePath) != ".wal" {
@@ -113,8 +121,8 @@ func listWALFiles(fs storage.FS) ([]walFile, error) {
 		}
 
 		_, fileName := path.Split(filePath)
-		firstBlockNum, lastBlockNum := parseWALFileBlockRange(fileName)
-		walFiles = append(walFiles, walFile{
+		firstBlockNum, lastBlockNum := ParseWALFileBlockRange(fileName)
+		walFiles = append(walFiles, WALFile{
 			Name:          fileName,
 			FirstBlockNum: firstBlockNum,
 			LastBlockNum:  lastBlockNum,

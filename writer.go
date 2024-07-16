@@ -132,7 +132,7 @@ func (w *writer[T]) Close() error {
 	defer w.mu.Unlock()
 
 	if w.options.FileRollOnClose {
-		// onClose previous buffer and write file to fs
+		// close previous buffer and write file to fs
 		if w.bufferCloser != nil {
 			// skip if there are no blocks to write
 			if w.lastBlockNum < w.firstBlockNum {
@@ -159,7 +159,7 @@ func (w *writer[T]) isReadyToWrite() bool {
 }
 
 func (w *writer[T]) rollFile() error {
-	// onClose previous buffer and write file to fs
+	// close previous buffer and write file to fs
 	if w.bufferCloser != nil {
 		// skip if there are no blocks to write
 		if w.lastBlockNum < w.firstBlockNum {

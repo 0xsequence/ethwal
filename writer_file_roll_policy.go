@@ -7,9 +7,6 @@ import (
 	"time"
 )
 
-type fileRollPolicyClosable interface {
-}
-
 type FileRollPolicy interface {
 	ShouldRoll() bool
 	Reset()

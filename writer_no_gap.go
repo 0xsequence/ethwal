@@ -33,6 +33,10 @@ func (n *noGapWriter[T]) Write(b Block[T]) error {
 	return n.w.Write(b)
 }
 
+func (n *noGapWriter[T]) RollFile() error {
+	return n.w.RollFile()
+}
+
 func (n *noGapWriter[T]) BlockNum() uint64 {
 	return n.w.BlockNum()
 }

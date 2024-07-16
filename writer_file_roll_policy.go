@@ -1,56 +1,56 @@
 package ethwal
 
-import "io"
+import (
+	"context"
+	"io"
+	"sync"
+	"time"
+)
+
+type fileRollPolicyClosable interface {
+}
 
 type FileRollPolicy interface {
 	ShouldRoll() bool
 	Reset()
-}
 
-type FileSizeRollPolicy interface {
-	FileRollPolicy
-
-	WrapWriter(w io.Writer) io.Writer
-}
-
-type LastBlockNumberRollPolicy interface {
-	FileRollPolicy
-
-	LastBlockNum(blockNum uint64)
+	onWrite(data []byte)
+	onBlockProcessed(blockNum uint64)
 }
 
 type fileSizeRollPolicy struct {
-	maxSize uint64
-	stats   *fileStats
+	maxSize      uint64
+	bytesWritten uint64
 }
 
-func NewFileSizeRollPolicy(maxSize uint64) FileSizeRollPolicy {
+func NewFileSizeRollPolicy(maxSize uint64) FileRollPolicy {
 	return &fileSizeRollPolicy{maxSize: maxSize}
 }
 
-func (p *fileSizeRollPolicy) WrapWriter(w io.Writer) io.Writer {
-	p.stats = &fileStats{Writer: w}
-	return p.stats
-}
-
 func (p *fileSizeRollPolicy) ShouldRoll() bool {
-	return p.stats.BytesWritten >= p.maxSize
+	return p.bytesWritten >= p.maxSize
 }
 
 func (p *fileSizeRollPolicy) Reset() {
-	p.stats = &fileStats{}
+	p.bytesWritten = 0
 }
+
+func (p *fileSizeRollPolicy) onWrite(data []byte) {
+	p.bytesWritten += uint64(len(data))
+}
+
+func (p *fileSizeRollPolicy) onBlockProcessed(blockNum uint64) {}
 
 // fileStats is a writer that keeps track of the number of bytes written to it.
-type fileStats struct {
+type writerWrapper struct {
 	io.Writer
-	BytesWritten uint64
+
+	fsrp FileRollPolicy
 }
 
-func (w *fileStats) Write(p []byte) (n int, err error) {
-	n, err = w.Writer.Write(p)
-	w.BytesWritten += uint64(n)
-	return
+func (w *writerWrapper) Write(p []byte) (n int, err error) {
+	defer w.fsrp.onWrite(p)
+	return w.Writer.Write(p)
 }
 
 type lastBlockNumberRollPolicy struct {
@@ -59,7 +59,9 @@ type lastBlockNumberRollPolicy struct {
 	lastBlockNum uint64
 }
 
-func NewLastBlockNumberRollPolicy(rollInterval uint64) LastBlockNumberRollPolicy {
+func (l *lastBlockNumberRollPolicy) onWrite(data []byte) {}
+
+func NewLastBlockNumberRollPolicy(rollInterval uint64) FileRollPolicy {
 	return &lastBlockNumberRollPolicy{rollInterval: rollInterval}
 }
 
@@ -71,27 +73,70 @@ func (l *lastBlockNumberRollPolicy) Reset() {
 	// noop
 }
 
-func (l *lastBlockNumberRollPolicy) LastBlockNum(blockNum uint64) {
+func (l *lastBlockNumberRollPolicy) onBlockProcessed(blockNum uint64) {
 	l.lastBlockNum = blockNum
 }
 
-type fileSizeOrLastBlockNumberRollPolicy struct {
-	FileSizeRollPolicy
-	LastBlockNumberRollPolicy
+type timeIntervalRollPolicy struct {
+	rollInterval time.Duration
+	onError      func(err error)
+
+	rollFunc func() error
+
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
+
+	lastTimeRolled time.Time
+
+	mu sync.Mutex
 }
 
-func NewFileSizeOrLastBlockNumberRollPolicy(maxSize, rollInterval uint64) FileRollPolicy {
-	return &fileSizeOrLastBlockNumberRollPolicy{
-		FileSizeRollPolicy:        NewFileSizeRollPolicy(maxSize),
-		LastBlockNumberRollPolicy: NewLastBlockNumberRollPolicy(rollInterval),
+func NewTimeIntervalRollPolicy(rollInterval time.Duration, onError func(err error)) FileRollPolicy {
+	return &timeIntervalRollPolicy{rollInterval: rollInterval, lastTimeRolled: time.Now(), onError: onError}
+}
+
+func (t *timeIntervalRollPolicy) ShouldRoll() bool {
+	if time.Since(t.lastTimeRolled) >= t.rollInterval {
+		return true
+	}
+	return false
+}
+
+func (t *timeIntervalRollPolicy) Reset() {
+	t.lastTimeRolled = time.Now()
+}
+
+func (t *timeIntervalRollPolicy) onWrite(data []byte) {}
+
+func (t *timeIntervalRollPolicy) onBlockProcessed(blockNum uint64) {}
+
+type FileRollPolicies []FileRollPolicy
+
+func (policies FileRollPolicies) ShouldRoll() bool {
+	for _, p := range policies {
+		if p.ShouldRoll() {
+			return true
+		}
+	}
+	return false
+}
+
+func (policies FileRollPolicies) Reset() {
+	for _, p := range policies {
+		p.Reset()
 	}
 }
 
-func (f *fileSizeOrLastBlockNumberRollPolicy) ShouldRoll() bool {
-	return f.FileSizeRollPolicy.ShouldRoll() || f.LastBlockNumberRollPolicy.ShouldRoll()
+func (policies FileRollPolicies) onWrite(data []byte) {
+	for _, p := range policies {
+		p.onWrite(data)
+	}
 }
 
-func (f *fileSizeOrLastBlockNumberRollPolicy) Reset() {
-	f.FileSizeRollPolicy.Reset()
-	f.LastBlockNumberRollPolicy.Reset()
+func (policies FileRollPolicies) onBlockProcessed(blockNum uint64) {
+	for _, p := range policies {
+		p.onBlockProcessed(blockNum)
+	}
 }
+
+var _ FileRollPolicy = &fileSizeRollPolicy{}

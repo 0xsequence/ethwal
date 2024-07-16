@@ -6,7 +6,7 @@ import (
 
 type Block[T any] struct {
 	Hash   common.Hash `json:"blockHash"`
-	Number uint64      `json:"onBlockProcessed"`
+	Number uint64      `json:"blockNum"`
 	TS     uint64      `json:"blockTS"` // unix ts
 	Data   T           `json:"blockData"`
 }

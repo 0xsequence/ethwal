@@ -74,7 +74,7 @@ func (l *lastBlockNumberRollPolicy) onBlockProcessed(blockNum uint64) {
 	l.lastBlockNum = blockNum
 }
 
-type timeIntervalRollPolicy struct {
+type timeBasedRollPolicy struct {
 	rollInterval time.Duration
 	onError      func(err error)
 
@@ -88,24 +88,24 @@ type timeIntervalRollPolicy struct {
 	mu sync.Mutex
 }
 
-func NewTimeIntervalRollPolicy(rollInterval time.Duration, onError func(err error)) FileRollPolicy {
-	return &timeIntervalRollPolicy{rollInterval: rollInterval, lastTimeRolled: time.Now(), onError: onError}
+func NewTimeBasedRollPolicy(rollInterval time.Duration, onError func(err error)) FileRollPolicy {
+	return &timeBasedRollPolicy{rollInterval: rollInterval, lastTimeRolled: time.Now(), onError: onError}
 }
 
-func (t *timeIntervalRollPolicy) ShouldRoll() bool {
+func (t *timeBasedRollPolicy) ShouldRoll() bool {
 	if time.Since(t.lastTimeRolled) >= t.rollInterval {
 		return true
 	}
 	return false
 }
 
-func (t *timeIntervalRollPolicy) Reset() {
+func (t *timeBasedRollPolicy) Reset() {
 	t.lastTimeRolled = time.Now()
 }
 
-func (t *timeIntervalRollPolicy) onWrite(data []byte) {}
+func (t *timeBasedRollPolicy) onWrite(data []byte) {}
 
-func (t *timeIntervalRollPolicy) onBlockProcessed(blockNum uint64) {}
+func (t *timeBasedRollPolicy) onBlockProcessed(blockNum uint64) {}
 
 type FileRollPolicies []FileRollPolicy
 

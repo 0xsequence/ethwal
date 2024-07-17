@@ -51,8 +51,8 @@ func TestLastBlockNumberRollPolicy(t *testing.T) {
 	assert.False(t, p.ShouldRoll())
 }
 
-func TestTimeIntervalRollPolicy(t *testing.T) {
-	p := NewTimeIntervalRollPolicy(1500*time.Millisecond, nil)
+func TestTimeBasedRollPolicy(t *testing.T) {
+	p := NewTimeBasedRollPolicy(1500*time.Millisecond, nil)
 	assert.False(t, p.ShouldRoll())
 
 	time.Sleep(1500 * time.Millisecond)

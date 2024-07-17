@@ -3,17 +3,17 @@ package ethwal
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestFileSizeRollPolicy(t *testing.T) {
-	var p FileSizeRollPolicy
 	var buff = bytes.NewBuffer(nil)
 
-	p = NewFileSizeRollPolicy(10)
-	w := p.WrapWriter(buff)
+	p := NewFileSizeRollPolicy(10)
+	w := writerWrapper{buff, p}
 
 	_, err := w.Write([]byte("hello"))
 	require.NoError(t, err)
@@ -26,7 +26,7 @@ func TestFileSizeRollPolicy(t *testing.T) {
 	assert.True(t, p.ShouldRoll())
 
 	p.Reset()
-	w = p.WrapWriter(buff)
+	w = writerWrapper{buff, p}
 	assert.False(t, p.ShouldRoll())
 
 	_, err = w.Write([]byte("hello world"))
@@ -38,50 +38,59 @@ func TestFileSizeRollPolicy(t *testing.T) {
 }
 
 func TestLastBlockNumberRollPolicy(t *testing.T) {
-	var p LastBlockNumberRollPolicy
-
-	p = NewLastBlockNumberRollPolicy(10)
+	p := NewLastBlockNumberRollPolicy(10)
 	assert.False(t, p.ShouldRoll())
 
-	p.LastBlockNum(5)
+	p.onBlockProcessed(5)
 	assert.False(t, p.ShouldRoll())
 
-	p.LastBlockNum(10)
+	p.onBlockProcessed(10)
 	assert.True(t, p.ShouldRoll())
 
-	p.LastBlockNum(11)
+	p.onBlockProcessed(11)
 	assert.False(t, p.ShouldRoll())
+}
+
+func TestTimeBasedRollPolicy(t *testing.T) {
+	p := NewTimeBasedRollPolicy(1500*time.Millisecond, nil)
+	assert.False(t, p.ShouldRoll())
+
+	time.Sleep(1500 * time.Millisecond)
+	assert.True(t, p.ShouldRoll())
+
+	p.Reset()
+	assert.False(t, p.ShouldRoll())
+
+	time.Sleep(1500 * time.Millisecond)
+	assert.True(t, p.ShouldRoll())
 }
 
 func TestNewFileSizeOrLastBlockNumberRollPolicy(t *testing.T) {
 	var buff = bytes.NewBuffer(nil)
 
-	fol := NewFileSizeOrLastBlockNumberRollPolicy(10, 10)
+	fol := FileRollPolicies{
+		NewFileSizeRollPolicy(10),
+		NewLastBlockNumberRollPolicy(10),
+	}
 
-	fs := fol.(FileSizeRollPolicy)
-	lb := fol.(LastBlockNumberRollPolicy)
+	w := writerWrapper{buff, fol}
 
-	require.NotNil(t, fs)
-	require.NotNil(t, lb)
+	assert.False(t, fol.ShouldRoll())
 
-	w := fs.WrapWriter(buff)
+	fol.onBlockProcessed(10)
+	assert.True(t, fol.ShouldRoll())
 
-	assert.False(t, fs.ShouldRoll())
-
-	lb.LastBlockNum(10)
-	assert.True(t, lb.ShouldRoll())
-
-	lb.LastBlockNum(11)
-	assert.False(t, lb.ShouldRoll())
+	fol.onBlockProcessed(11)
+	assert.False(t, fol.ShouldRoll())
 
 	_, err := w.Write([]byte("hello world"))
 	require.NoError(t, err)
 
-	assert.True(t, fs.ShouldRoll())
+	assert.True(t, fol.ShouldRoll())
 
-	fs.Reset()
-	assert.False(t, fs.ShouldRoll())
+	fol.Reset()
+	assert.False(t, fol.ShouldRoll())
 
-	lb.LastBlockNum(20)
-	assert.True(t, lb.ShouldRoll())
+	fol.onBlockProcessed(20)
+	assert.True(t, fol.ShouldRoll())
 }

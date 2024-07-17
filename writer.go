@@ -19,6 +19,7 @@ const defaultBufferSize = 8 * datasize.MB
 type Writer[T any] interface {
 	Write(b Block[T]) error
 	BlockNum() uint64
+	RollFile() error
 	Close() error
 }
 
@@ -79,6 +80,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		lastBlockNum = walFiles[len(walFiles)-1].LastBlockNum
 	}
 
+	// create new writer
 	return &writer[T]{
 		options:       opt,
 		path:          walPath,
@@ -109,11 +111,14 @@ func (w *writer[T]) Write(b Block[T]) error {
 	}
 
 	w.lastBlockNum = b.Number
-	if p, ok := w.options.FileRollPolicy.(LastBlockNumberRollPolicy); ok {
-		p.LastBlockNum(w.lastBlockNum)
-	}
-
+	w.options.FileRollPolicy.onBlockProcessed(w.lastBlockNum)
 	return nil
+}
+
+func (w *writer[T]) RollFile() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.rollFile()
 }
 
 func (w *writer[T]) BlockNum() uint64 {
@@ -209,9 +214,7 @@ func (w *writer[T]) newFile() error {
 
 	// create new buffer writer
 	bufferWriter := io.Writer(w.buffer)
-	if policy, ok := w.options.FileRollPolicy.(FileSizeRollPolicy); ok {
-		bufferWriter = policy.WrapWriter(bufferWriter)
-	}
+	bufferWriter = &writerWrapper{Writer: bufferWriter, fsrp: w.options.FileRollPolicy}
 
 	// create new buffer closer
 	w.bufferCloser = &funcCloser{

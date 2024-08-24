@@ -1,6 +1,9 @@
 package ethwal
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/c2h5oh/datasize"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -349,4 +354,156 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 	reader, ok := r.(*reader[int])
 	require.True(t, ok)
 	require.Equal(t, string(reader.path[len(reader.path)-1]), string(os.PathSeparator))
+}
+
+func BenchmarkReaderInitializationTime(b *testing.B) {
+	bench := []struct {
+		FileNo uint64
+	}{
+		{
+			FileNo: 2000,
+		},
+		{
+			FileNo: 20000,
+		},
+		{
+			FileNo: 200000,
+		},
+	}
+
+	for _, benchCase := range bench {
+		b.Run(fmt.Sprintf("FileNo-%d", benchCase.FileNo), func(b *testing.B) {
+			defer func() { _ = os.RemoveAll(testRoot) }()
+
+			rPath := path.Join(testPath, "v1")
+			_ = os.MkdirAll(rPath, 0755)
+			for i := uint64(0); i < benchCase.FileNo; i++ {
+				fPAth := path.Join(rPath, fmt.Sprintf("%d_%d.wal", i+1, i+1))
+				f, err := os.Create(fPAth)
+				if err != nil {
+					panic(err)
+				}
+				_, err = f.Write([]byte{0x01})
+				if err != nil {
+					panic(err)
+				}
+				err = f.Close()
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				rdr, _ := NewReader[int](Options{
+					Dataset: Dataset{
+						Path: rPath,
+					},
+					NewDecoder:      NewCBORDecoder,
+					NewDecompressor: NewZSTDDecompressor,
+				})
+				_ = rdr.Close()
+			}
+		})
+	}
+}
+
+type File struct {
+	StartBlock uint64 `cbor:"0,keyasint"`
+	EndBlock   uint64 `cbor:"1,keyasint"`
+}
+
+func (f File) Path() string {
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%d_%d.wal", f.StartBlock, f.EndBlock)))
+	return fmt.Sprintf("%x/%x/%x/%x", hash[0:8], hash[8:16], hash[16:24], hash[24:32])
+}
+
+func TestFilePath(t *testing.T) {
+	f := File{1, 10000}
+
+	spew.Dump(path.Join(testPath, f.Path()))
+}
+
+func BenchmarkReaderIndexFileLoadTime(b *testing.B) {
+	bench := []struct {
+		FileNo uint64
+	}{
+		{
+			FileNo: 2000,
+		},
+		{
+			FileNo: 20000,
+		},
+		{
+			FileNo: 200000,
+		},
+		{
+			FileNo: 2000000,
+		},
+	}
+
+	for _, benchCase := range bench {
+		b.Run(fmt.Sprintf("FileNo-%d", benchCase.FileNo), func(b *testing.B) {
+			defer func() { _ = os.RemoveAll(testRoot) }()
+
+			buff := bytes.NewBuffer(nil)
+			comp := NewZSTDCompressor(buff)
+			enc := NewCBOREncoder(comp)
+
+			for i := uint64(0); i < benchCase.FileNo; i++ {
+				_ = enc.Encode(File{
+					StartBlock: i + 1,
+					EndBlock:   i + 1,
+				})
+			}
+
+			_ = comp.Close()
+
+			rPath := path.Join(testPath, "v1")
+			_ = os.MkdirAll(rPath, 0755)
+			f, err := os.Create(path.Join(rPath, ".fileIndex"))
+			if err != nil {
+				panic(err)
+			}
+
+			buffBytes := buff.Bytes()
+
+			_, err = f.Write(buffBytes)
+			if err != nil {
+				panic(err)
+			}
+
+			_ = f.Close()
+
+			fmt.Println("indexFileSize", datasize.ByteSize(len(buffBytes)).HumanReadable())
+			fmt.Println("theoreticalCapacity", (datasize.ByteSize(benchCase.FileNo) * 5 * datasize.MB).HumanReadable())
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				var files []File
+
+				f, err := os.Open(path.Join(rPath, ".fileIndex"))
+				if err != nil {
+					panic(err)
+				}
+
+				decomp := NewZSTDDecompressor(f)
+				dec := NewCBORDecoder(decomp)
+				for {
+					var f File
+					err = dec.Decode(&f)
+					if errors.Is(err, io.EOF) {
+						break
+					} else if err != nil {
+						panic(err)
+					}
+
+					files = append(files, f)
+				}
+
+				decomp.Close()
+				f.Close()
+			}
+		})
+	}
 }

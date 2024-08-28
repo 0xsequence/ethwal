@@ -106,7 +106,9 @@ func ParseWALFileBlockRange(filePath string) (uint64, uint64) {
 const FileIndexFileName = ".fileIndex"
 
 var (
-	ErrFileNotFound = fmt.Errorf("file not found")
+	ErrFileNotFound     = fmt.Errorf("file not found")
+	ErrFileAlreadyExist = fmt.Errorf("file already exist")
+	ErrFailedToMkdir    = fmt.Errorf("failed to create file directory")
 )
 
 type File struct {
@@ -130,7 +132,7 @@ func (f File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error)
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 			err := os.MkdirAll(dirPath, 0755)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create file directory")
+				return nil, ErrFailedToMkdir
 			}
 		}
 	}
@@ -200,7 +202,7 @@ func (fi *FileIndex) Files() []File {
 func (fi *FileIndex) AddFile(file File) error {
 	_, _, err := fi.FindFile(file.LastBlockNum)
 	if err == nil {
-		return fmt.Errorf("ethlogwal: file for block %d already exists", file.LastBlockNum)
+		return fmt.Errorf("%w: block %d", ErrFileAlreadyExist, file.LastBlockNum)
 	}
 
 	fi.files = append(fi.files, file)
@@ -275,6 +277,7 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]File, error) {
 		files = append(files, file)
 	}
 
+	// remove last file if it does not exist, it may be incomplete due to crash
 	if len(files) != 0 && !files[len(files)-1].Exist(ctx, fs) {
 		files = files[:len(files)-1]
 	}
@@ -282,6 +285,7 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]File, error) {
 	return files, nil
 }
 
+// migrateToFileIndex migrates all WAL files to the file index
 func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	wlk, ok := fs.(storage.Walker)
 	if !ok {
@@ -306,10 +310,6 @@ func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	if err != nil {
 		return err
 	}
-
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].FirstBlockNum < files[j].FirstBlockNum
-	})
 
 	fileIndex := NewFileIndexFromFiles(fs, files)
 	return fileIndex.Save(ctx)

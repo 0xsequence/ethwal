@@ -31,6 +31,22 @@ func (d Dataset) FullCachePath() string {
 	return buildETHWALPath(d.Name, d.Version, d.CachePath)
 }
 
+// buildETHWALPath returns the path to the WAL directory
+// The path is built as follows: <walPath>/<name?>/<version?>
+func buildETHWALPath(name, version, walPath string) string {
+	var parts = []string{walPath}
+
+	if name != "" {
+		parts = append(parts, name)
+	}
+
+	if version != "" {
+		parts = append(parts, version)
+	}
+
+	return path.Join(walPath, name, version)
+}
+
 type Options struct {
 	Dataset Dataset
 
@@ -63,46 +79,6 @@ func (o Options) WithDefaults() Options {
 	return o
 }
 
-// funcCloser is a helper struct that implements io.Closer interface
-type funcCloser struct {
-	CloseFunc func() error
-}
-
-func (f *funcCloser) Close() error {
-	if f.CloseFunc != nil {
-		return f.CloseFunc()
-	}
-	return nil
-}
-
-// buildETHWALPath returns the path to the WAL directory
-// The path is built as follows: <walPath>/<name?>/<version?>
-func buildETHWALPath(name, version, walPath string) string {
-	var parts = []string{walPath}
-
-	if name != "" {
-		parts = append(parts, name)
-	}
-
-	if version != "" {
-		parts = append(parts, version)
-	}
-
-	return path.Join(walPath, name, version)
-}
-
-// ParseWALFileBlockRange reads first and last block number stored in WAL file from file name
-func ParseWALFileBlockRange(filePath string) (uint64, uint64) {
-	_, fileName := path.Split(filePath)
-	fileNameSplit := strings.Split(fileName, ".")
-	blockNumberSplit := strings.Split(fileNameSplit[0], "_")
-
-	first, _ := strconv.ParseInt(blockNumberSplit[0], 10, 64)
-	last, _ := strconv.ParseInt(blockNumberSplit[1], 10, 64)
-
-	return uint64(first), uint64(last)
-}
-
 const FileIndexFileName = ".fileIndex"
 
 var (
@@ -117,12 +93,8 @@ type File struct {
 }
 
 func (f File) Path() string {
-	hash := sha256.Sum256([]byte(f.LegacyPath()))
+	hash := sha256.Sum256([]byte(f.legacyPath()))
 	return fmt.Sprintf("%x/%x/%x/%x", hash[0:8], hash[8:16], hash[16:24], hash[24:32])
-}
-
-func (f File) LegacyPath() string {
-	return fmt.Sprintf("%d_%d.wal", f.FirstBlockNum, f.LastBlockNum)
 }
 
 func (f File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error) {
@@ -143,11 +115,15 @@ func (f File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
 	if f.exist(ctx, fs) {
 		return fs.Open(ctx, f.Path(), nil)
 	}
-	return fs.Open(ctx, f.LegacyPath(), nil)
+	return fs.Open(ctx, f.legacyPath(), nil)
 }
 
 func (f File) Exist(ctx context.Context, fs storage.FS) bool {
 	return f.exist(ctx, fs) || f.existLegacy(ctx, fs)
+}
+
+func (f File) legacyPath() string {
+	return fmt.Sprintf("%d_%d.wal", f.FirstBlockNum, f.LastBlockNum)
 }
 
 func (f File) exist(ctx context.Context, fs storage.FS) bool {
@@ -159,7 +135,7 @@ func (f File) exist(ctx context.Context, fs storage.FS) bool {
 }
 
 func (f File) existLegacy(ctx context.Context, fs storage.FS) bool {
-	_, err := fs.Attributes(ctx, f.LegacyPath(), nil)
+	_, err := fs.Attributes(ctx, f.legacyPath(), nil)
 	if err != nil {
 		return false
 	}
@@ -300,7 +276,7 @@ func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 		}
 
 		_, fileName := path.Split(filePath)
-		firstBlockNum, lastBlockNum := ParseWALFileBlockRange(fileName)
+		firstBlockNum, lastBlockNum := parseWALFileBlockRange(fileName)
 		files = append(files, File{
 			FirstBlockNum: firstBlockNum,
 			LastBlockNum:  lastBlockNum,
@@ -313,4 +289,28 @@ func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 
 	fileIndex := NewFileIndexFromFiles(fs, files)
 	return fileIndex.Save(ctx)
+}
+
+// parseWALFileBlockRange reads first and last block number stored in WAL file from file name
+func parseWALFileBlockRange(filePath string) (uint64, uint64) {
+	_, fileName := path.Split(filePath)
+	fileNameSplit := strings.Split(fileName, ".")
+	blockNumberSplit := strings.Split(fileNameSplit[0], "_")
+
+	first, _ := strconv.ParseInt(blockNumberSplit[0], 10, 64)
+	last, _ := strconv.ParseInt(blockNumberSplit[1], 10, 64)
+
+	return uint64(first), uint64(last)
+}
+
+// funcCloser is a helper struct that implements io.Closer interface
+type funcCloser struct {
+	CloseFunc func() error
+}
+
+func (f *funcCloser) Close() error {
+	if f.CloseFunc != nil {
+		return f.CloseFunc()
+	}
+	return nil
 }

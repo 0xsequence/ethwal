@@ -47,7 +47,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	opt = opt.WithDefaults()
 
 	if opt.Dataset.Path == "" {
-		return nil, fmt.Errorf("wal path cannot be empty")
+		return nil, fmt.Errorf("path cannot be empty")
 	}
 
 	// build WAL path
@@ -64,7 +64,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		if _, err := os.Stat(walPath); os.IsNotExist(err) {
 			err := os.MkdirAll(walPath, 0755)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create WAL directory")
+				return nil, fmt.Errorf("failed to create ethwal directory")
 			}
 		}
 	}
@@ -105,13 +105,13 @@ func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 
 	if !w.isReadyToWrite() || w.options.FileRollPolicy.ShouldRoll() {
 		if err := w.rollFile(ctx); err != nil {
-			return fmt.Errorf("failed to roll to the next WAL file: %w", err)
+			return fmt.Errorf("failed to roll to the next file: %w", err)
 		}
 	}
 
 	err := w.encoder.Encode(b)
 	if err != nil {
-		return fmt.Errorf("failed to encode WAL data: %w", err)
+		return fmt.Errorf("failed to encode file data: %w", err)
 	}
 
 	w.lastBlockNum = b.Number

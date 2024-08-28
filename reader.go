@@ -47,7 +47,7 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	opt = opt.WithDefaults()
 
 	if opt.Dataset.Path == "" {
-		return nil, fmt.Errorf("wal path cannot be empty")
+		return nil, fmt.Errorf("path cannot be empty")
 	}
 
 	// build WAL path
@@ -64,7 +64,7 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 		if _, err := os.Stat(walPath); os.IsNotExist(err) {
 			err := os.MkdirAll(walPath, 0755)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create WAL directory")
+				return nil, fmt.Errorf("failed to create ethwal directory")
 			}
 		}
 	} else {
@@ -73,7 +73,7 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 			if _, err := os.Stat(opt.Dataset.CachePath); os.IsNotExist(err) {
 				err := os.MkdirAll(opt.Dataset.CachePath, 0755)
 				if err != nil {
-					return nil, fmt.Errorf("failed to create WAL directory")
+					return nil, fmt.Errorf("failed to create ethwal cache directory")
 				}
 			}
 			fs = storage.NewCacheWrapper(fs, local.NewLocalFS(opt.Dataset.CachePath), nil)
@@ -114,7 +114,7 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 			return Block[T]{}, io.EOF
 		}
 		if err != nil {
-			return Block[T]{}, fmt.Errorf("failed to read first WAL file: %w", err)
+			return Block[T]{}, fmt.Errorf("failed to read first file: %w", err)
 		}
 	}
 
@@ -134,12 +134,12 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 					return Block[T]{}, io.EOF
 				}
 				if err != nil {
-					return Block[T]{}, fmt.Errorf("failed to read next WAL file: %w", err)
+					return Block[T]{}, fmt.Errorf("failed to read next file: %w", err)
 				}
 
 				err = r.decoder.Decode(&block)
 				if err != nil {
-					return Block[T]{}, fmt.Errorf("failed to decode WAL data: %w", err)
+					return Block[T]{}, fmt.Errorf("failed to decode data: %w", err)
 				}
 
 				if !structs.IsZero(block) {
@@ -147,7 +147,7 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 				}
 
 				if !r.isBlockWithin(block) {
-					return Block[T]{}, fmt.Errorf("block number %d is out of wal file %d-%d range",
+					return Block[T]{}, fmt.Errorf("block number %d is out of file block %d-%d range",
 						block.Number,
 						r.fileIndex.At(r.currFileIndex).FirstBlockNum,
 						r.fileIndex.At(r.currFileIndex).LastBlockNum)
@@ -155,11 +155,11 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 
 				return block, nil
 			}
-			return Block[T]{}, fmt.Errorf("failed to decode WAL data: %w", err)
+			return Block[T]{}, fmt.Errorf("failed to decode file data: %w", err)
 		}
 
 		if !r.isBlockWithin(block) {
-			return Block[T]{}, fmt.Errorf("block number %d is out of wal file %d-%d range",
+			return Block[T]{}, fmt.Errorf("block number %d is out of file block %d-%d range",
 				block.Number,
 				r.fileIndex.At(r.currFileIndex).FirstBlockNum,
 				r.fileIndex.At(r.currFileIndex).LastBlockNum)
@@ -192,7 +192,7 @@ func (r *reader[T]) Seek(ctx context.Context, blockNum uint64) error {
 
 	if r.currFileIndex != fileIndex {
 		r.currFileIndex = fileIndex
-		err = r.readFile(ctx, fileIndex)
+		err = r.readFile(ctx, r.currFileIndex)
 		if err != nil {
 			return err
 		}
@@ -227,28 +227,28 @@ func (r *reader[T]) readFile(ctx context.Context, index int) error {
 		_ = r.closer.Close()
 	}
 
-	wFile := r.fileIndex.At(index)
-	file, err := wFile.Open(ctx, r.fs)
+	file := r.fileIndex.At(index)
+	rdr, err := file.Open(ctx, r.fs)
 	if err != nil {
 		return err
 	}
 
-	walReader := io.NopCloser(file)
+	var decmprRdr = io.NopCloser(rdr)
 	if r.options.NewDecompressor != nil {
-		walReader = r.options.NewDecompressor(walReader)
+		decmprRdr = r.options.NewDecompressor(decmprRdr)
 	}
 
 	r.closer = &funcCloser{
 		CloseFunc: func() error {
-			if err := walReader.Close(); err != nil {
-				_ = file.Close()
+			if err := decmprRdr.Close(); err != nil {
+				_ = rdr.Close()
 				return err
 			}
-			return file.Close()
+			return rdr.Close()
 		},
 	}
 
-	r.decoder = r.options.NewDecoder(walReader)
+	r.decoder = r.options.NewDecoder(decmprRdr)
 
 	r.currFileIndex = index
 	return nil

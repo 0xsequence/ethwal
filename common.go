@@ -259,7 +259,6 @@ func (fi *FileIndex) AddFile(file *File) error {
 }
 
 func (fi *FileIndex) At(index int) *File {
-
 	return fi.files[index]
 }
 

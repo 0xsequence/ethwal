@@ -2,7 +2,10 @@ package ethwal
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"sort"
@@ -12,12 +15,6 @@ import (
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
 )
-
-type WALFile struct {
-	Name          string
-	FirstBlockNum uint64
-	LastBlockNum  uint64
-}
 
 type Dataset struct {
 	Name      string
@@ -106,14 +103,192 @@ func ParseWALFileBlockRange(filePath string) (uint64, uint64) {
 	return uint64(first), uint64(last)
 }
 
-// ListWALFiles lists all WAL files in the provided file system
-func ListWALFiles(fs storage.FS) ([]WALFile, error) {
-	wlk, ok := fs.(storage.Walker)
-	if !ok {
-		return nil, fmt.Errorf("ethlogwal: provided file system does not implement Walker interface")
+const FileIndexFileName = ".fileIndex"
+
+var (
+	ErrFileNotFound = fmt.Errorf("file not found")
+)
+
+type File struct {
+	FirstBlockNum uint64 `json:"firstBlockNum" cbor:"0,keyasint"`
+	LastBlockNum  uint64 `json:"lastBlockNum" cbor:"1,keyasint"`
+}
+
+func (f File) Path() string {
+	hash := sha256.Sum256([]byte(f.LegacyPath()))
+	return fmt.Sprintf("%x/%x/%x/%x", hash[0:8], hash[8:16], hash[16:24], hash[24:32])
+}
+
+func (f File) LegacyPath() string {
+	return fmt.Sprintf("%d_%d.wal", f.FirstBlockNum, f.LastBlockNum)
+}
+
+func (f File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error) {
+	filePath := f.Path()
+	if _, ok := fs.(*local.LocalFS); ok {
+		dirPath := path.Dir(filePath)
+		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+			err := os.MkdirAll(dirPath, 0755)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create file directory")
+			}
+		}
+	}
+	return fs.Create(ctx, filePath, nil)
+}
+
+func (f File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
+	if f.exist(fs) {
+		return fs.Open(ctx, f.Path(), nil)
+	}
+	return fs.Open(ctx, f.LegacyPath(), nil)
+}
+
+func (f File) Exist(fs storage.FS) bool {
+	return f.exist(fs) || f.existLegacy(fs)
+}
+
+func (f File) exist(fs storage.FS) bool {
+	_, err := fs.Attributes(context.Background(), f.Path(), nil)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func (f File) existLegacy(fs storage.FS) bool {
+	_, err := fs.Attributes(context.Background(), f.LegacyPath(), nil)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+type FileIndex struct {
+	fs storage.FS
+
+	files []File
+}
+
+func NewFileIndex(fs storage.FS) (*FileIndex, error) {
+	files, err := ListFiles(context.Background(), fs)
+	if err != nil {
+		return nil, err
 	}
 
-	var walFiles []WALFile
+	return &FileIndex{
+		fs:    fs,
+		files: files,
+	}, nil
+}
+
+func NewFileIndexFromFiles(fs storage.FS, files []File) *FileIndex {
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].FirstBlockNum < files[j].FirstBlockNum
+	})
+
+	return &FileIndex{
+		fs:    fs,
+		files: files,
+	}
+}
+
+func (fi *FileIndex) Files() []File {
+	return fi.files
+}
+
+func (fi *FileIndex) AddFile(file File) error {
+	_, _, err := fi.FindFile(file.LastBlockNum)
+	if err == nil {
+		return fmt.Errorf("ethlogwal: file for block %d already exists", file.LastBlockNum)
+	}
+
+	fi.files = append(fi.files, file)
+	return nil
+}
+
+func (fi *FileIndex) At(index int) File {
+	return fi.files[index]
+}
+
+func (fi *FileIndex) FindFile(blockNum uint64) (File, int, error) {
+	i := sort.Search(len(fi.files), func(i int) bool {
+		return blockNum <= fi.files[i].LastBlockNum
+	})
+	if i == len(fi.files) {
+		return File{}, 0, ErrFileNotFound
+	}
+	return fi.files[i], i, nil
+}
+
+func (fi *FileIndex) Save(ctx context.Context) error {
+	indexFile, err := fi.fs.Create(ctx, FileIndexFileName, nil)
+	if err != nil {
+		return err
+	}
+
+	comp := NewZSTDCompressor(indexFile)
+	enc := NewCBOREncoder(comp)
+	for _, file := range fi.files {
+		_ = enc.Encode(file)
+	}
+
+	err = comp.Close()
+	if err != nil {
+		return err
+	}
+	return indexFile.Close()
+}
+
+// ListFiles lists all WAL files in the provided file system
+func ListFiles(ctx context.Context, fs storage.FS) ([]File, error) {
+	indexFile, err := fs.Open(context.Background(), FileIndexFileName, nil)
+	if err != nil && strings.Contains(err.Error(), "not exist") {
+		err = migrateToFileIndex(ctx, fs)
+		if err != nil {
+			return nil, err
+		}
+
+		indexFile, err = fs.Open(context.Background(), FileIndexFileName, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer indexFile.Close()
+
+	var files []File
+	decomp := NewZSTDDecompressor(indexFile)
+	dec := NewCBORDecoder(decomp)
+
+	for {
+		var file File
+		err = dec.Decode(&file)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+		files = append(files, file)
+	}
+
+	if len(files) != 0 && !files[len(files)-1].Exist(fs) {
+		files = files[:len(files)-1]
+	}
+
+	return files, nil
+}
+
+func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
+	wlk, ok := fs.(storage.Walker)
+	if !ok {
+		return fmt.Errorf("ethlogwal: provided file system does not implement Walker interface")
+	}
+
+	var files []File
 	err := wlk.Walk(context.Background(), "", func(filePath string) error {
 		// walk only wal files
 		if path.Ext(filePath) != ".wal" {
@@ -122,20 +297,20 @@ func ListWALFiles(fs storage.FS) ([]WALFile, error) {
 
 		_, fileName := path.Split(filePath)
 		firstBlockNum, lastBlockNum := ParseWALFileBlockRange(fileName)
-		walFiles = append(walFiles, WALFile{
-			Name:          fileName,
+		files = append(files, File{
 			FirstBlockNum: firstBlockNum,
 			LastBlockNum:  lastBlockNum,
 		})
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	sort.Slice(walFiles, func(i, j int) bool {
-		return walFiles[i].FirstBlockNum < walFiles[j].FirstBlockNum
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].FirstBlockNum < files[j].FirstBlockNum
 	})
 
-	return walFiles, nil
+	fileIndex := NewFileIndexFromFiles(fs, files)
+	return fileIndex.Save(ctx)
 }

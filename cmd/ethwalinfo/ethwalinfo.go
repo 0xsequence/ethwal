@@ -60,7 +60,7 @@ func main() {
 			// mount fs to dataset path
 			fs = storage.NewPrefixWrapper(fs, dataset.FullPath())
 
-			walFiles, err := ethwal.ListWALFiles(fs)
+			walFiles, err := ethwal.ListFiles(c.Context, fs)
 			if err != nil {
 				return err
 			}

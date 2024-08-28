@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"sync"
 
 	"github.com/fatih/structs"
@@ -33,8 +32,8 @@ type reader[T any] struct {
 
 	closer io.Closer
 
-	walFiles       []WALFile
-	currentWALFile int
+	fileIndex     *FileIndex
+	currFileIndex int
 
 	lastBlockNum uint64
 
@@ -84,16 +83,16 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	// add prefix to file system
 	fs = storage.NewPrefixWrapper(fs, walPath)
 
-	walFiles, err := ListWALFiles(fs)
+	fileIndex, err := NewFileIndex(fs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load WAL file list: %w", err)
+		return nil, fmt.Errorf("failed to load file index: %w", err)
 	}
 
 	return &reader[T]{
-		options:  opt,
-		path:     walPath,
-		fs:       fs,
-		walFiles: walFiles,
+		options:   opt,
+		path:      walPath,
+		fs:        fs,
+		fileIndex: fileIndex,
 	}, nil
 }
 
@@ -101,7 +100,7 @@ func (r *reader[T]) NumWALFiles() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return len(r.walFiles)
+	return len(r.fileIndex.Files())
 }
 
 func (r *reader[T]) Read() (Block[T], error) {
@@ -144,8 +143,8 @@ func (r *reader[T]) Read() (Block[T], error) {
 				if !r.isBlockWithin(block) {
 					return Block[T]{}, fmt.Errorf("block number %d is out of wal file %d-%d range",
 						block.Number,
-						r.walFiles[r.currentWALFile].FirstBlockNum,
-						r.walFiles[r.currentWALFile].LastBlockNum)
+						r.fileIndex.At(r.currFileIndex).FirstBlockNum,
+						r.fileIndex.At(r.currFileIndex).LastBlockNum)
 				}
 
 				return block, nil
@@ -156,8 +155,8 @@ func (r *reader[T]) Read() (Block[T], error) {
 		if !r.isBlockWithin(block) {
 			return Block[T]{}, fmt.Errorf("block number %d is out of wal file %d-%d range",
 				block.Number,
-				r.walFiles[r.currentWALFile].FirstBlockNum,
-				r.walFiles[r.currentWALFile].LastBlockNum)
+				r.fileIndex.At(r.currFileIndex).FirstBlockNum,
+				r.fileIndex.At(r.currFileIndex).LastBlockNum)
 		}
 	}
 
@@ -169,17 +168,28 @@ func (r *reader[T]) Read() (Block[T], error) {
 }
 
 func (r *reader[T]) isBlockWithin(block Block[T]) bool {
-	return r.walFiles[r.currentWALFile].FirstBlockNum <= block.Number &&
-		block.Number <= r.walFiles[r.currentWALFile].LastBlockNum
+	return r.fileIndex.Files()[r.currFileIndex].FirstBlockNum <= block.Number &&
+		block.Number <= r.fileIndex.Files()[r.currFileIndex].LastBlockNum
 }
 
 func (r *reader[T]) Seek(blockNum uint64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	err := r.selectFileForRead(blockNum)
+	_, fileIndex, err := r.fileIndex.FindFile(blockNum)
+	if err != nil && errors.Is(err, ErrFileNotFound) {
+		return io.EOF
+	}
 	if err != nil {
 		return err
+	}
+
+	if r.currFileIndex != fileIndex {
+		r.currFileIndex = fileIndex
+		err = r.readFile(fileIndex)
+		if err != nil {
+			return err
+		}
 	}
 
 	r.lastBlockNum = blockNum - 1
@@ -203,7 +213,7 @@ func (r *reader[T]) Close() error {
 }
 
 func (r *reader[T]) readFile(index int) error {
-	if index >= len(r.walFiles) {
+	if index >= len(r.fileIndex.Files()) {
 		return io.EOF
 	}
 
@@ -211,8 +221,8 @@ func (r *reader[T]) readFile(index int) error {
 		_ = r.closer.Close()
 	}
 
-	wFile := r.walFiles[index]
-	file, err := r.fs.Open(context.Background(), wFile.Name, nil)
+	wFile := r.fileIndex.At(index)
+	file, err := wFile.Open(context.Background(), r.fs)
 	if err != nil {
 		return err
 	}
@@ -234,29 +244,10 @@ func (r *reader[T]) readFile(index int) error {
 
 	r.decoder = r.options.NewDecoder(walReader)
 
-	r.currentWALFile = index
+	r.currFileIndex = index
 	return nil
 }
 
 func (r *reader[T]) readNextFile() error {
-	return r.readFile(r.currentWALFile + 1)
-}
-
-func (r *reader[T]) selectFileForRead(fromBlockNum uint64) error {
-	if len(r.walFiles) > r.currentWALFile && fromBlockNum > r.walFiles[r.currentWALFile].LastBlockNum {
-		walFilesLen := len(r.walFiles)
-		index := sort.Search(walFilesLen, func(i int) bool {
-			return fromBlockNum <= r.walFiles[i].LastBlockNum
-		})
-
-		if index == walFilesLen {
-			return io.EOF
-		}
-
-		if r.currentWALFile != index {
-			return r.readFile(index)
-		}
-	}
-
-	return nil
+	return r.readFile(r.currFileIndex + 1)
 }

@@ -1,6 +1,7 @@
 package ethwal
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -207,7 +208,7 @@ func TestReader_Read(t *testing.T) {
 
 			var blk Block[int]
 			var blks []Block[int]
-			for blk, err = rdr.Read(); err == nil; blk, err = rdr.Read() {
+			for blk, err = rdr.Read(context.Background()); err == nil; blk, err = rdr.Read(context.Background()) {
 				//t.Logf("blk: %+v", blk)
 				blks = append(blks, blk)
 			}
@@ -235,7 +236,7 @@ func TestReader_NumWALFiles(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, 3, rdr.NumWALFiles())
+	assert.Equal(t, 3, rdr.FilesNum())
 
 	require.NoError(t, rdr.Close())
 }
@@ -257,23 +258,23 @@ func TestReader_BlockNum(t *testing.T) {
 
 	assert.Equal(t, uint64(0), rdr.BlockNum())
 
-	blk, err := rdr.Read()
+	blk, err := rdr.Read(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(1), blk.Number)
 	assert.Equal(t, uint64(1), rdr.BlockNum())
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(2), blk.Number)
 	assert.Equal(t, uint64(2), rdr.BlockNum())
 
-	err = rdr.Seek(5)
+	err = rdr.Seek(context.Background(), 5)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(4), rdr.BlockNum()) // last block read was 4 next block is 5
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(5), blk.Number)
@@ -298,38 +299,38 @@ func TestReader_Seek(t *testing.T) {
 	require.NoError(t, err)
 
 	// seek to 2
-	err = rdr.Seek(2)
+	err = rdr.Seek(context.Background(), 2)
 	require.NoError(t, err)
 
-	blk, err := rdr.Read()
+	blk, err := rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), blk.Number)
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(3), blk.Number)
 
 	// seek to 10, which does not exist but there is a file with block 11
-	err = rdr.Seek(10)
+	err = rdr.Seek(context.Background(), 10)
 	require.NoError(t, err)
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(11), blk.Number)
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(12), blk.Number)
 
-	_, err = rdr.Read()
+	_, err = rdr.Read(context.Background())
 	require.Equal(t, io.EOF, err)
 
 	//  reader should return EOF on consecutive reads
-	_, err = rdr.Read()
+	_, err = rdr.Read(context.Background())
 	require.Equal(t, io.EOF, err)
 
 	// seek to 50 which does not exist and there is no file with block 50 or higher
-	err = rdr.Seek(50)
+	err = rdr.Seek(context.Background(), 50)
 	require.Equal(t, io.EOF, err)
 }
 

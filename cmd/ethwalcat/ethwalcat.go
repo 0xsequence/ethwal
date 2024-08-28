@@ -181,7 +181,7 @@ func main() {
 				}
 
 				if context.Uint64(FromBlockNumFlag.Name) > 0 {
-					err = r.Seek(context.Uint64(FromBlockNumFlag.Name))
+					err = r.Seek(context.Context, context.Uint64(FromBlockNumFlag.Name))
 					if err != nil {
 						return err
 					}
@@ -189,7 +189,7 @@ func main() {
 
 				var toBlockNumber = context.Uint64(ToBlockNumFlag.Name)
 
-				for b, err := r.Read(); err == nil; b, err = r.Read() {
+				for b, err := r.Read(context.Context); err == nil; b, err = r.Read(context.Context) {
 					if toBlockNumber != 0 && b.Number >= toBlockNumber {
 						break
 					}
@@ -264,7 +264,7 @@ func main() {
 						b.Data = normalizeDataToCBOR(b.Data)
 					}
 
-					err = w.Write(b)
+					err = w.Write(context.Context, b)
 					if err != nil {
 						return err
 					}
@@ -274,7 +274,7 @@ func main() {
 					return err
 				}
 
-				err = w.Close()
+				err = w.Close(context.Context)
 				if err != nil {
 					return err
 				}

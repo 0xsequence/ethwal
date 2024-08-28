@@ -17,10 +17,10 @@ import (
 const defaultBufferSize = 8 * datasize.MB
 
 type Writer[T any] interface {
-	Write(b Block[T]) error
+	Write(ctx context.Context, b Block[T]) error
 	BlockNum() uint64
-	RollFile() error
-	Close() error
+	RollFile(ctx context.Context) error
+	Close(ctx context.Context) error
 }
 
 type writer[T any] struct {
@@ -95,7 +95,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	}, nil
 }
 
-func (w *writer[T]) Write(b Block[T]) error {
+func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -104,7 +104,7 @@ func (w *writer[T]) Write(b Block[T]) error {
 	}
 
 	if !w.isReadyToWrite() || w.options.FileRollPolicy.ShouldRoll() {
-		if err := w.rollFile(); err != nil {
+		if err := w.rollFile(ctx); err != nil {
 			return fmt.Errorf("failed to roll to the next WAL file: %w", err)
 		}
 	}
@@ -119,10 +119,10 @@ func (w *writer[T]) Write(b Block[T]) error {
 	return nil
 }
 
-func (w *writer[T]) RollFile() error {
+func (w *writer[T]) RollFile(ctx context.Context) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.rollFile()
+	return w.rollFile(ctx)
 }
 
 func (w *writer[T]) BlockNum() uint64 {
@@ -131,7 +131,7 @@ func (w *writer[T]) BlockNum() uint64 {
 	return w.lastBlockNum
 }
 
-func (w *writer[T]) Close() error {
+func (w *writer[T]) Close(ctx context.Context) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -148,7 +148,7 @@ func (w *writer[T]) Close() error {
 				return err
 			}
 
-			err = w.writeFile()
+			err = w.writeFile(ctx)
 			if err != nil {
 				return err
 			}
@@ -162,7 +162,7 @@ func (w *writer[T]) isReadyToWrite() bool {
 	return w.encoder != nil
 }
 
-func (w *writer[T]) rollFile() error {
+func (w *writer[T]) rollFile(ctx context.Context) error {
 	// close previous buffer and write file to fs
 	if w.bufferCloser != nil {
 		// skip if there are no blocks to write
@@ -175,7 +175,7 @@ func (w *writer[T]) rollFile() error {
 			return err
 		}
 
-		err = w.writeFile()
+		err = w.writeFile(ctx)
 		if err != nil {
 			return err
 		}
@@ -184,7 +184,7 @@ func (w *writer[T]) rollFile() error {
 	return w.newFile()
 }
 
-func (w *writer[T]) writeFile() error {
+func (w *writer[T]) writeFile(ctx context.Context) error {
 	// create new file
 	newFile := File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
 
@@ -195,14 +195,14 @@ func (w *writer[T]) writeFile() error {
 	}
 
 	// save file index
-	err = w.fileIndex.Save(context.Background())
+	err = w.fileIndex.Save(ctx)
 	if err != nil {
 		return err
 	}
 
 	// save file
 
-	f, err := newFile.Create(context.Background(), w.fs)
+	f, err := newFile.Create(ctx, w.fs)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package ethwal
 
 import (
+	"context"
 	"io"
 	"os"
 	"path"
@@ -107,7 +108,7 @@ func TestWriter_Write(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, block := range blocksFile {
-				err := w.Write(block)
+				err := w.Write(context.Background(), block)
 				require.NoError(t, err)
 			}
 
@@ -115,10 +116,10 @@ func TestWriter_Write(t *testing.T) {
 			w_, ok := w.(*writer[int])
 			require.True(t, ok)
 
-			err = w_.rollFile()
+			err = w_.rollFile(context.Background())
 			require.NoError(t, err)
 
-			err = w.Close()
+			err = w.Close(context.Background())
 			require.NoError(t, err)
 
 			// check WAL files
@@ -164,17 +165,17 @@ func TestWriter_Continue(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = w.Write(Block[int]{Number: 1})
+	err = w.Write(context.Background(), Block[int]{Number: 1})
 	require.NoError(t, err)
 
 	// flush the in-memory buffer to disk
 	w_, ok := w.(*writer[int])
 	require.True(t, ok)
 
-	err = w_.rollFile()
+	err = w_.rollFile(context.Background())
 	require.NoError(t, err)
 
-	err = w.Close()
+	err = w.Close(context.Background())
 	require.NoError(t, err)
 
 	// 2nd writer
@@ -189,12 +190,12 @@ func TestWriter_Continue(t *testing.T) {
 
 	assert.Equal(t, uint64(1), w.BlockNum())
 
-	err = w.Write(Block[int]{Number: 2})
+	err = w.Write(context.Background(), Block[int]{Number: 2})
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(2), w.BlockNum())
 
-	err = w.Close()
+	err = w.Close(context.Background())
 	require.NoError(t, err)
 }
 
@@ -214,16 +215,16 @@ func TestNoGapWriter_BlockNum(t *testing.T) {
 	ngw := NewWriterNoGap[int](w)
 	require.NotNil(t, w)
 
-	err = ngw.Write(Block[int]{Number: 1})
+	err = ngw.Write(context.Background(), Block[int]{Number: 1})
 	require.NoError(t, err)
 
-	err = ngw.Write(Block[int]{Number: 2})
+	err = ngw.Write(context.Background(), Block[int]{Number: 2})
 	require.NoError(t, err)
 
-	err = ngw.Write(Block[int]{Number: 3})
+	err = ngw.Write(context.Background(), Block[int]{Number: 3})
 	require.NoError(t, err)
 
-	err = ngw.Close()
+	err = ngw.Close(context.Background())
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(3), w.BlockNum())
@@ -248,16 +249,16 @@ func TestNoGapWriter_FileRollOnClose(t *testing.T) {
 	ngw := NewWriterNoGap[int](w)
 	require.NotNil(t, w)
 
-	err = ngw.Write(Block[int]{Number: 1})
+	err = ngw.Write(context.Background(), Block[int]{Number: 1})
 	require.NoError(t, err)
 
-	err = ngw.Write(Block[int]{Number: 2})
+	err = ngw.Write(context.Background(), Block[int]{Number: 2})
 	require.NoError(t, err)
 
-	err = ngw.Write(Block[int]{Number: 3})
+	err = ngw.Write(context.Background(), Block[int]{Number: 3})
 	require.NoError(t, err)
 
-	err = ngw.Close()
+	err = ngw.Close(context.Background())
 	require.NoError(t, err)
 
 	require.Equal(t, uint64(3), w.BlockNum())
@@ -362,12 +363,12 @@ func BenchmarkWriter_Write(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				for j := 0; j < 1000000; j++ {
-					err := w.Write(Block[int]{Number: uint64(i)})
+					err := w.Write(context.Background(), Block[int]{Number: uint64(i)})
 					require.NoError(b, err)
 				}
 			}
 
-			err = w.Close()
+			err = w.Close(context.Background())
 			require.NoError(b, err)
 		})
 	}

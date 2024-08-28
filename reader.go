@@ -17,9 +17,9 @@ import (
 const firstFileIndex = 0
 
 type Reader[T any] interface {
-	NumWALFiles() int
-	Read() (Block[T], error)
-	Seek(blockNum uint64) error
+	FilesNum() int
+	Read(ctx context.Context) (Block[T], error)
+	Seek(ctx context.Context, blockNum uint64) error
 	BlockNum() uint64
 	Close() error
 }
@@ -96,20 +96,20 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	}, nil
 }
 
-func (r *reader[T]) NumWALFiles() int {
+func (r *reader[T]) FilesNum() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	return len(r.fileIndex.Files())
 }
 
-func (r *reader[T]) Read() (Block[T], error) {
+func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var err error
 	if r.decoder == nil {
-		err = r.readFile(firstFileIndex)
+		err = r.readFile(ctx, firstFileIndex)
 		if errors.Is(err, io.EOF) {
 			return Block[T]{}, io.EOF
 		}
@@ -120,10 +120,16 @@ func (r *reader[T]) Read() (Block[T], error) {
 
 	var block Block[T]
 	for structs.IsZero(block) || block.Number <= r.lastBlockNum {
+		select {
+		case <-ctx.Done():
+			return Block[T]{}, ctx.Err()
+		default:
+		}
+
 		err = r.decoder.Decode(&block)
 		if err != nil {
 			if err == io.EOF {
-				err = r.readNextFile()
+				err = r.readNextFile(ctx)
 				if errors.Is(err, io.EOF) {
 					return Block[T]{}, io.EOF
 				}
@@ -172,7 +178,7 @@ func (r *reader[T]) isBlockWithin(block Block[T]) bool {
 		block.Number <= r.fileIndex.Files()[r.currFileIndex].LastBlockNum
 }
 
-func (r *reader[T]) Seek(blockNum uint64) error {
+func (r *reader[T]) Seek(ctx context.Context, blockNum uint64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -186,7 +192,7 @@ func (r *reader[T]) Seek(blockNum uint64) error {
 
 	if r.currFileIndex != fileIndex {
 		r.currFileIndex = fileIndex
-		err = r.readFile(fileIndex)
+		err = r.readFile(ctx, fileIndex)
 		if err != nil {
 			return err
 		}
@@ -212,7 +218,7 @@ func (r *reader[T]) Close() error {
 	return nil
 }
 
-func (r *reader[T]) readFile(index int) error {
+func (r *reader[T]) readFile(ctx context.Context, index int) error {
 	if index >= len(r.fileIndex.Files()) {
 		return io.EOF
 	}
@@ -222,7 +228,7 @@ func (r *reader[T]) readFile(index int) error {
 	}
 
 	wFile := r.fileIndex.At(index)
-	file, err := wFile.Open(context.Background(), r.fs)
+	file, err := wFile.Open(ctx, r.fs)
 	if err != nil {
 		return err
 	}
@@ -248,6 +254,6 @@ func (r *reader[T]) readFile(index int) error {
 	return nil
 }
 
-func (r *reader[T]) readNextFile() error {
-	return r.readFile(r.currFileIndex + 1)
+func (r *reader[T]) readNextFile(ctx context.Context) error {
+	return r.readFile(ctx, r.currFileIndex+1)
 }

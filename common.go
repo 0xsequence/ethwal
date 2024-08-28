@@ -138,26 +138,26 @@ func (f File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error)
 }
 
 func (f File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
-	if f.exist(fs) {
+	if f.exist(ctx, fs) {
 		return fs.Open(ctx, f.Path(), nil)
 	}
 	return fs.Open(ctx, f.LegacyPath(), nil)
 }
 
-func (f File) Exist(fs storage.FS) bool {
-	return f.exist(fs) || f.existLegacy(fs)
+func (f File) Exist(ctx context.Context, fs storage.FS) bool {
+	return f.exist(ctx, fs) || f.existLegacy(ctx, fs)
 }
 
-func (f File) exist(fs storage.FS) bool {
-	_, err := fs.Attributes(context.Background(), f.Path(), nil)
+func (f File) exist(ctx context.Context, fs storage.FS) bool {
+	_, err := fs.Attributes(ctx, f.Path(), nil)
 	if err != nil {
 		return false
 	}
 	return true
 }
 
-func (f File) existLegacy(fs storage.FS) bool {
-	_, err := fs.Attributes(context.Background(), f.LegacyPath(), nil)
+func (f File) existLegacy(ctx context.Context, fs storage.FS) bool {
+	_, err := fs.Attributes(ctx, f.LegacyPath(), nil)
 	if err != nil {
 		return false
 	}
@@ -275,7 +275,7 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]File, error) {
 		files = append(files, file)
 	}
 
-	if len(files) != 0 && !files[len(files)-1].Exist(fs) {
+	if len(files) != 0 && !files[len(files)-1].Exist(ctx, fs) {
 		files = files[:len(files)-1]
 	}
 
@@ -289,7 +289,7 @@ func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	}
 
 	var files []File
-	err := wlk.Walk(context.Background(), "", func(filePath string) error {
+	err := wlk.Walk(ctx, "", func(filePath string) error {
 		// walk only wal files
 		if path.Ext(filePath) != ".wal" {
 			return nil

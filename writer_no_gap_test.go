@@ -2,6 +2,7 @@ package ethwal
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path"
@@ -29,19 +30,19 @@ func TestWriterNoGap(t *testing.T) {
 		ngw := NewWriterNoGap[int](w)
 		require.NotNil(t, w)
 
-		err = ngw.Write(Block[int]{Number: 1})
+		err = ngw.Write(context.Background(), Block[int]{Number: 1})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{Number: 2})
+		err = ngw.Write(context.Background(), Block[int]{Number: 2})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{Number: 3})
+		err = ngw.Write(context.Background(), Block[int]{Number: 3})
 		require.NoError(t, err)
 
-		err = (w.(*writer[int])).rollFile()
+		err = (w.(*writer[int])).rollFile(context.Background())
 		require.NoError(t, err)
 
-		err = ngw.Close()
+		err = ngw.Close(context.Background())
 		require.NoError(t, err)
 
 		walData, err := os.ReadFile(
@@ -79,21 +80,21 @@ func TestWriterNoGap(t *testing.T) {
 		ngw := NewWriterNoGap[int](w)
 		require.NotNil(t, w)
 
-		err = ngw.Write(Block[int]{Number: 1})
+		err = ngw.Write(context.Background(), Block[int]{Number: 1})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{Number: 2})
+		err = ngw.Write(context.Background(), Block[int]{Number: 2})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{Number: 3})
+		err = ngw.Write(context.Background(), Block[int]{Number: 3})
 		require.NoError(t, err)
 
-		err = ngw.Write(Block[int]{Number: 10})
+		err = ngw.Write(context.Background(), Block[int]{Number: 10})
 
-		err = (w.(*writer[int])).rollFile()
+		err = (w.(*writer[int])).rollFile(context.Background())
 		require.NoError(t, err)
 
-		err = ngw.Close()
+		err = ngw.Close(context.Background())
 		require.NoError(t, err)
 
 		walData, err := os.ReadFile(

@@ -1,6 +1,7 @@
 package ethwal
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -11,6 +12,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
@@ -52,6 +55,8 @@ type Options struct {
 
 	FileSystem storage.FS
 
+	PrefetchTimeout time.Duration
+
 	NewCompressor   NewCompressorFunc
 	NewDecompressor NewDecompressorFunc
 
@@ -66,6 +71,9 @@ func (o Options) WithDefaults() Options {
 	if o.FileSystem == nil {
 		wd, _ := os.Getwd()
 		o.FileSystem = local.NewLocalFS(wd)
+	}
+	if o.PrefetchTimeout == 0 {
+		o.PrefetchTimeout = 30 * time.Second
 	}
 	if o.NewEncoder == nil {
 		o.NewEncoder = NewCBOREncoder
@@ -90,19 +98,26 @@ var (
 type File struct {
 	FirstBlockNum uint64 `json:"firstBlockNum" cbor:"0,keyasint"`
 	LastBlockNum  uint64 `json:"lastBlockNum" cbor:"1,keyasint"`
+
+	prefetchBuffer []byte
+
+	mu sync.Mutex
 }
 
-func (f File) Path() string {
+func (f *File) Path() string {
 	hash := sha256.Sum256([]byte(f.legacyPath()))
 	return fmt.Sprintf("%x/%x/%x/%x", hash[0:8], hash[8:16], hash[16:24], hash[24:32])
 }
 
-func (f File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error) {
+func (f *File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	filePath := f.Path()
 	if _, ok := fs.(*local.LocalFS); ok {
 		dirPath := path.Dir(filePath)
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-			err := os.MkdirAll(dirPath, 0755)
+			err = os.MkdirAll(dirPath, 0755)
 			if err != nil {
 				return nil, ErrFailedToMkdir
 			}
@@ -111,22 +126,80 @@ func (f File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error)
 	return fs.Create(ctx, filePath, nil)
 }
 
-func (f File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
+func (f *File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
+	f.mu.Lock()
+	prefetchedRdr := f.prefetched()
+	f.mu.Unlock()
+
+	if prefetchedRdr != nil {
+		return prefetchedRdr, nil
+	}
+	return f.open(ctx, fs)
+}
+
+func (f *File) Prefetch(ctx context.Context, fs storage.FS) error {
+	f.mu.Lock()
+	if f.prefetchBuffer != nil {
+		f.mu.Unlock()
+		return nil
+	}
+	f.mu.Unlock()
+
+	rdr, err := f.open(ctx, fs)
+	if err != nil {
+		return err
+	}
+
+	buff, err := io.ReadAll(rdr)
+	if err != nil {
+		return err
+	}
+
+	err = rdr.Close()
+	if err != nil {
+		return err
+	}
+
+	f.mu.Lock()
+	f.prefetchBuffer = buff
+	f.mu.Unlock()
+	return nil
+}
+
+func (f *File) PrefetchClear() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.prefetchBuffer = nil
+}
+
+func (f *File) Exist(ctx context.Context, fs storage.FS) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.exist(ctx, fs) || f.existLegacy(ctx, fs)
+}
+
+func (f *File) legacyPath() string {
+	return fmt.Sprintf("%d_%d.wal", f.FirstBlockNum, f.LastBlockNum)
+}
+
+func (f *File) open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
 	if f.exist(ctx, fs) {
 		return fs.Open(ctx, f.Path(), nil)
 	}
 	return fs.Open(ctx, f.legacyPath(), nil)
 }
 
-func (f File) Exist(ctx context.Context, fs storage.FS) bool {
-	return f.exist(ctx, fs) || f.existLegacy(ctx, fs)
+func (f *File) prefetched() io.ReadCloser {
+	if f.prefetchBuffer != nil {
+		rdr := io.NopCloser(bytes.NewReader(f.prefetchBuffer))
+		f.prefetchBuffer = nil
+		return rdr
+	}
+	return nil
 }
 
-func (f File) legacyPath() string {
-	return fmt.Sprintf("%d_%d.wal", f.FirstBlockNum, f.LastBlockNum)
-}
-
-func (f File) exist(ctx context.Context, fs storage.FS) bool {
+func (f *File) exist(ctx context.Context, fs storage.FS) bool {
 	_, err := fs.Attributes(ctx, f.Path(), nil)
 	if err != nil {
 		return false
@@ -134,7 +207,7 @@ func (f File) exist(ctx context.Context, fs storage.FS) bool {
 	return true
 }
 
-func (f File) existLegacy(ctx context.Context, fs storage.FS) bool {
+func (f *File) existLegacy(ctx context.Context, fs storage.FS) bool {
 	_, err := fs.Attributes(ctx, f.legacyPath(), nil)
 	if err != nil {
 		return false
@@ -145,7 +218,7 @@ func (f File) existLegacy(ctx context.Context, fs storage.FS) bool {
 type FileIndex struct {
 	fs storage.FS
 
-	files []File
+	files []*File
 }
 
 func NewFileIndex(fs storage.FS) (*FileIndex, error) {
@@ -160,7 +233,7 @@ func NewFileIndex(fs storage.FS) (*FileIndex, error) {
 	}, nil
 }
 
-func NewFileIndexFromFiles(fs storage.FS, files []File) *FileIndex {
+func NewFileIndexFromFiles(fs storage.FS, files []*File) *FileIndex {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].FirstBlockNum < files[j].FirstBlockNum
 	})
@@ -171,11 +244,11 @@ func NewFileIndexFromFiles(fs storage.FS, files []File) *FileIndex {
 	}
 }
 
-func (fi *FileIndex) Files() []File {
+func (fi *FileIndex) Files() []*File {
 	return fi.files
 }
 
-func (fi *FileIndex) AddFile(file File) error {
+func (fi *FileIndex) AddFile(file *File) error {
 	_, _, err := fi.FindFile(file.LastBlockNum)
 	if err == nil {
 		return fmt.Errorf("%w: block %d", ErrFileAlreadyExist, file.LastBlockNum)
@@ -185,16 +258,17 @@ func (fi *FileIndex) AddFile(file File) error {
 	return nil
 }
 
-func (fi *FileIndex) At(index int) File {
+func (fi *FileIndex) At(index int) *File {
+
 	return fi.files[index]
 }
 
-func (fi *FileIndex) FindFile(blockNum uint64) (File, int, error) {
+func (fi *FileIndex) FindFile(blockNum uint64) (*File, int, error) {
 	i := sort.Search(len(fi.files), func(i int) bool {
 		return blockNum <= fi.files[i].LastBlockNum
 	})
 	if i == len(fi.files) {
-		return File{}, 0, ErrFileNotFound
+		return nil, 0, ErrFileNotFound
 	}
 	return fi.files[i], i, nil
 }
@@ -219,7 +293,7 @@ func (fi *FileIndex) Save(ctx context.Context) error {
 }
 
 // ListFiles lists all WAL files in the provided file system
-func ListFiles(ctx context.Context, fs storage.FS) ([]File, error) {
+func ListFiles(ctx context.Context, fs storage.FS) ([]*File, error) {
 	indexFile, err := fs.Open(context.Background(), FileIndexFileName, nil)
 	if err != nil && strings.Contains(err.Error(), "not exist") {
 		err = migrateToFileIndex(ctx, fs)
@@ -237,7 +311,7 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]File, error) {
 	}
 	defer indexFile.Close()
 
-	var files []File
+	var files []*File
 	decomp := NewZSTDDecompressor(indexFile)
 	dec := NewCBORDecoder(decomp)
 
@@ -250,7 +324,7 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]File, error) {
 			}
 			return nil, err
 		}
-		files = append(files, file)
+		files = append(files, &file)
 	}
 
 	// remove last file if it does not exist, it may be incomplete due to crash
@@ -268,7 +342,7 @@ func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 		return fmt.Errorf("ethlogwal: provided file system does not implement Walker interface")
 	}
 
-	var files []File
+	var files []*File
 	err := wlk.Walk(ctx, "", func(filePath string) error {
 		// walk only wal files
 		if path.Ext(filePath) != ".wal" {
@@ -277,7 +351,7 @@ func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 
 		_, fileName := path.Split(filePath)
 		firstBlockNum, lastBlockNum := parseWALFileBlockRange(fileName)
-		files = append(files, File{
+		files = append(files, &File{
 			FirstBlockNum: firstBlockNum,
 			LastBlockNum:  lastBlockNum,
 		})

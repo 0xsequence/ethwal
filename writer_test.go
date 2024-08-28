@@ -123,7 +123,7 @@ func TestWriter_Write(t *testing.T) {
 			require.NoError(t, err)
 
 			// check WAL files
-			filePath := path.Join(buildETHWALPath(tc.options.Dataset.Name, tc.options.Dataset.Version, tc.options.Dataset.Path), File{FirstBlockNum: 1, LastBlockNum: 4}.Path())
+			filePath := path.Join(buildETHWALPath(tc.options.Dataset.Name, tc.options.Dataset.Version, tc.options.Dataset.Path), (&File{FirstBlockNum: 1, LastBlockNum: 4}).Path())
 			_, err = os.Stat(filePath)
 			require.NoError(t, err)
 
@@ -264,7 +264,7 @@ func TestNoGapWriter_FileRollOnClose(t *testing.T) {
 	require.Equal(t, uint64(3), w.BlockNum())
 
 	// check WAL files
-	filePath := path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), File{FirstBlockNum: 1, LastBlockNum: 3}.Path())
+	filePath := path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), (&File{FirstBlockNum: 1, LastBlockNum: 3}).Path())
 	_, err = os.Stat(filePath)
 	require.NoError(t, err)
 }

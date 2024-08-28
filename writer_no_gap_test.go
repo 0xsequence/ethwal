@@ -46,7 +46,7 @@ func TestWriterNoGap(t *testing.T) {
 		require.NoError(t, err)
 
 		walData, err := os.ReadFile(
-			path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), File{FirstBlockNum: 1, LastBlockNum: 3}.Path()),
+			path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), (&File{FirstBlockNum: 1, LastBlockNum: 3}).Path()),
 		)
 		require.NoError(t, err)
 
@@ -98,7 +98,7 @@ func TestWriterNoGap(t *testing.T) {
 		require.NoError(t, err)
 
 		walData, err := os.ReadFile(
-			path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), File{FirstBlockNum: 1, LastBlockNum: 10}.Path()),
+			path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), (&File{FirstBlockNum: 1, LastBlockNum: 10}).Path()),
 		)
 		require.NoError(t, err)
 

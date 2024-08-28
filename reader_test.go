@@ -355,3 +355,7 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 func Test_ReaderFileIndexAhead(t *testing.T) {
 	t.Skip()
 }
+
+func Test_ReaderPrefetch(t *testing.T) {
+	t.Skip()
+}

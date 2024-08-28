@@ -8,6 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFile_Path(t *testing.T) {
+	t.Skip()
+}
+
+func TestFile_Open(t *testing.T) {
+	t.Skip()
+}
+
+func TestFile_Exist(t *testing.T) {
+	t.Skip()
+}
+
+func TestFile_Prefetch(t *testing.T) {
+	t.Skip()
+}
+
 func TestNewFileIndex(t *testing.T) {
 	t.Skip()
 }
@@ -25,7 +41,7 @@ func TestFileIndex_At(t *testing.T) {
 }
 
 func TestFileIndex_FindFile(t *testing.T) {
-	fileIndex := NewFileIndexFromFiles(nil, []File{
+	fileIndex := NewFileIndexFromFiles(nil, []*File{
 		{FirstBlockNum: 0, LastBlockNum: 49},
 		{FirstBlockNum: 50, LastBlockNum: 99},
 		{FirstBlockNum: 100, LastBlockNum: 149},
@@ -78,9 +94,9 @@ func BenchmarkFindInFileIndex(b *testing.B) {
 
 	for _, bench := range benchCase {
 		b.Run(fmt.Sprintf("NumFiles-%d", bench.NumFiles), func(b *testing.B) {
-			files := make([]File, 0, bench.NumFiles)
+			files := make([]*File, 0, bench.NumFiles)
 			for i := uint64(1); i < bench.NumFiles+1; i++ {
-				files = append(files, File{
+				files = append(files, &File{
 					FirstBlockNum: (i - 1) * 50,
 					LastBlockNum:  i,
 				})

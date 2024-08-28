@@ -147,10 +147,11 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 				}
 
 				if !r.isBlockWithin(block) {
+					currentFile := r.fileIndex.At(r.currFileIndex)
 					return Block[T]{}, fmt.Errorf("block number %d is out of file block %d-%d range",
 						block.Number,
-						r.fileIndex.At(r.currFileIndex).FirstBlockNum,
-						r.fileIndex.At(r.currFileIndex).LastBlockNum)
+						currentFile.FirstBlockNum,
+						currentFile.LastBlockNum)
 				}
 
 				return block, nil
@@ -159,10 +160,11 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 		}
 
 		if !r.isBlockWithin(block) {
+			currentFile := r.fileIndex.At(r.currFileIndex)
 			return Block[T]{}, fmt.Errorf("block number %d is out of file block %d-%d range",
 				block.Number,
-				r.fileIndex.At(r.currFileIndex).FirstBlockNum,
-				r.fileIndex.At(r.currFileIndex).LastBlockNum)
+				currentFile.FirstBlockNum,
+				currentFile.LastBlockNum)
 		}
 	}
 
@@ -171,11 +173,6 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 	}
 
 	return block, nil
-}
-
-func (r *reader[T]) isBlockWithin(block Block[T]) bool {
-	return r.fileIndex.Files()[r.currFileIndex].FirstBlockNum <= block.Number &&
-		block.Number <= r.fileIndex.Files()[r.currFileIndex].LastBlockNum
 }
 
 func (r *reader[T]) Seek(ctx context.Context, blockNum uint64) error {
@@ -191,6 +188,12 @@ func (r *reader[T]) Seek(ctx context.Context, blockNum uint64) error {
 	}
 
 	if r.currFileIndex != fileIndex {
+		// clear prefetched file
+		if r.currFileIndex+1 < len(r.fileIndex.Files()) {
+			r.fileIndex.At(r.currFileIndex + 1).PrefetchClear()
+		}
+
+		// read file
 		r.currFileIndex = fileIndex
 		err = r.readFile(ctx, r.currFileIndex)
 		if err != nil {
@@ -255,5 +258,24 @@ func (r *reader[T]) readFile(ctx context.Context, index int) error {
 }
 
 func (r *reader[T]) readNextFile(ctx context.Context) error {
+	defer r.prefetchNextFile(ctx)
 	return r.readFile(ctx, r.currFileIndex+1)
+}
+
+func (r *reader[T]) prefetchNextFile(ctx context.Context) {
+	if r.currFileIndex+1 < len(r.fileIndex.Files()) {
+		go r.prefetchFile(ctx, r.fileIndex.At(r.currFileIndex+1))
+	}
+}
+
+func (r *reader[T]) prefetchFile(ctx context.Context, file *File) {
+	pCtx, cancel := context.WithTimeout(ctx, r.options.PrefetchTimeout)
+	defer cancel()
+
+	_ = file.Prefetch(pCtx, r.fs)
+}
+
+func (r *reader[T]) isBlockWithin(block Block[T]) bool {
+	return r.fileIndex.Files()[r.currFileIndex].FirstBlockNum <= block.Number &&
+		block.Number <= r.fileIndex.Files()[r.currFileIndex].LastBlockNum
 }

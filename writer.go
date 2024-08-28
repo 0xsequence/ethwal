@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/c2h5oh/datasize"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
@@ -186,7 +187,7 @@ func (w *writer[T]) rollFile(ctx context.Context) error {
 
 func (w *writer[T]) writeFile(ctx context.Context) error {
 	// create new file
-	newFile := File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
+	newFile := &File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
 
 	// add file to file index
 	err := w.fileIndex.AddFile(newFile)
@@ -194,29 +195,41 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 		return err
 	}
 
+	// save file in parallel
+	grp, grpCtx := errgroup.WithContext(ctx)
+
 	// save file index
-	err = w.fileIndex.Save(ctx)
-	if err != nil {
-		return err
-	}
+	grp.Go(func() error {
+		err := w.fileIndex.Save(grpCtx)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 
 	// save file
+	grp.Go(func() error {
+		f, err := newFile.Create(grpCtx, w.fs)
+		if err != nil {
+			return err
+		}
 
-	f, err := newFile.Create(ctx, w.fs)
-	if err != nil {
-		return err
-	}
+		_, err = f.Write(w.buffer.Bytes())
+		if err != nil {
+			return err
+		}
 
-	_, err = f.Write(w.buffer.Bytes())
-	if err != nil {
-		return err
-	}
+		err = f.Close()
+		if err != nil {
+			return err
+		}
 
-	err = f.Close()
-	if err != nil {
-		return err
-	}
-	return nil
+		return nil
+	})
+
+	// wait for both file and file index to be saved
+	// todo: save in background
+	return grp.Wait()
 }
 
 func (w *writer[T]) newFile() error {

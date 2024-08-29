@@ -104,6 +104,24 @@ type File struct {
 	mu sync.Mutex
 }
 
+// Path returns the path to the file
+//
+// The directory structure:
+//
+//	-- ethwal
+//		|-- 000563
+//		|   |-- 000256
+//		|   |   |-- 000124
+//		|   |   |   |-- 28f55a4df523b3ef28f55a4df523b3ef28f55a4df523b3ef28f55a4df523b3ef <- ethwal file
+//		|   |   |-- 000278
+//		|   |   |   |-- 28f55a4df523b3ef28f55a4df523b3ef28f55a4df523b3ef28f55a4df523b3dd <- ethwal file
+//		|   |-- 000025
+//		|   |   |-- 000967
+//		|   |   |   |-- 28f55a4df523b3ef28f55a4df523b3ef28f55a4df523b3dd28f55a4df523b3ef <- ethwal file
+//		|-- .fileIndex
+//
+// The data structure ensures that there is no more than 1000 directories per level. The filename is a hash of the first and last block numbers.
+// The hash is used to distribute files evenly across directories.
 func (f *File) Path() string {
 	// prepare data for hashing
 	var (
@@ -362,7 +380,7 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]*File, error) {
 	return files, nil
 }
 
-// migrateToFileIndex migrates all WAL files to the file index
+// migrateToFileIndex migrates all ethwal files to the file index
 func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	wlk, ok := fs.(storage.Walker)
 	if !ok {

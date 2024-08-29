@@ -324,6 +324,71 @@ func Test_WriterFileIndexAhead(t *testing.T) {
 	assert.Equal(t, uint64(12), w.BlockNum())
 }
 
+func Test_WriterFileIndexBehind(t *testing.T) {
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	fs := local.NewLocalFS(path.Join(testPath, "int-wal", defaultDatasetVersion))
+
+	files, err := ListFiles(context.Background(), fs)
+	require.NoError(t, err)
+
+	fi := NewFileIndexFromFiles(fs, files)
+	require.NotNil(t, fi)
+
+	fi.files = fi.files[:len(fi.files)-1]
+
+	err = fi.Save(context.Background())
+	require.Nil(t, err)
+
+	// test
+	w, err := NewWriter[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	defer w.Close(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(8), w.BlockNum())
+
+	err = w.Write(context.Background(), Block[int]{Number: 11, Data: 0x0123})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(11), w.BlockNum())
+
+	err = w.Write(context.Background(), Block[int]{Number: 12, Data: 0x1234})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(12), w.BlockNum())
+
+	err = w.RollFile(context.Background())
+	require.NoError(t, err)
+
+	rdr, err := NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	defer rdr.Close()
+	require.NoError(t, err)
+
+	err = rdr.Seek(context.Background(), 11)
+	require.NoError(t, err)
+
+	b11, err := rdr.Read(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(11), b11.Number)
+	assert.Equal(t, 0x0123, b11.Data)
+
+	b12, err := rdr.Read(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(12), b12.Number)
+	assert.Equal(t, 0x1234, b12.Data)
+}
+
 func BenchmarkWriter_Write(b *testing.B) {
 	defer func() {
 		_ = os.RemoveAll(testPath)

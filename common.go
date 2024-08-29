@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -88,6 +89,7 @@ func (o Options) WithDefaults() Options {
 }
 
 const FileIndexFileName = ".fileIndex"
+const NumberOfDirectoriesPerLevel = 1000 // since there are 3 levels the maximal number of directories is 1000^3 = 1_000_000_000
 
 var (
 	ErrFileNotFound     = fmt.Errorf("file not found")
@@ -105,8 +107,25 @@ type File struct {
 }
 
 func (f *File) Path() string {
-	hash := sha256.Sum256([]byte(f.legacyPath()))
-	return fmt.Sprintf("%x/%x/%x/%x", hash[0:8], hash[8:16], hash[16:24], hash[24:32])
+	// prepare data for hashing
+	var (
+		hash [32]byte
+		data [16]byte
+	)
+
+	binary.BigEndian.PutUint64(data[0:8], f.FirstBlockNum)
+	binary.BigEndian.PutUint64(data[8:16], f.LastBlockNum)
+
+	// hash the data
+	hash = sha256.Sum256(data[:])
+
+	// return the path, remember to update the format if you change NumberOfDirectoriesPerLevel
+	return fmt.Sprintf("%06d/%06d/%06d/%x",
+		binary.BigEndian.Uint64(hash[0:8])%NumberOfDirectoriesPerLevel,   // level0
+		binary.BigEndian.Uint64(hash[8:16])%NumberOfDirectoriesPerLevel,  // level1
+		binary.BigEndian.Uint64(hash[16:24])%NumberOfDirectoriesPerLevel, // level2
+		hash, // filename
+	)
 }
 
 func (f *File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error) {

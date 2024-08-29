@@ -120,8 +120,8 @@ type File struct {
 //		|   |   |   |-- 28f55a4df523b3ef28f55a4df523b3ef28f55a4df523b3dd28f55a4df523b3ef <- ethwal file
 //		|-- .fileIndex
 //
-// The data structure ensures that there is no more than 1000 directories per level. The filename is a hash of the first and last block numbers.
-// The hash is used to distribute files evenly across directories.
+// The data structure ensures that there is no more than 1000 directories per level. The filename is a sha-256 hash of
+// the first and last block numbers. The hash is used to distribute files evenly across directories.
 func (f *File) Path() string {
 	// prepare data for hashing
 	var (

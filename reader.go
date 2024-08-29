@@ -50,19 +50,16 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 		return nil, fmt.Errorf("path cannot be empty")
 	}
 
-	// build WAL path
-	walPath := buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path)
-	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
-		walPath = walPath + string(os.PathSeparator)
-	}
+	// build dataset path
+	datasetPath := opt.Dataset.FullPath()
 
 	// set file system
 	fs := opt.FileSystem
 
-	// create WAL directory if it doesn't exist on local FS
+	// create dataset directory if it doesn't exist on local FS
 	if _, ok := opt.FileSystem.(*local.LocalFS); ok {
-		if _, err := os.Stat(walPath); os.IsNotExist(err) {
-			err := os.MkdirAll(walPath, 0755)
+		if _, err := os.Stat(datasetPath); os.IsNotExist(err) {
+			err := os.MkdirAll(datasetPath, 0755)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create ethwal directory")
 			}
@@ -81,7 +78,7 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	}
 
 	// add prefix to file system
-	fs = storage.NewPrefixWrapper(fs, walPath)
+	fs = storage.NewPrefixWrapper(fs, datasetPath)
 
 	fileIndex, err := NewFileIndex(fs)
 	if err != nil {
@@ -90,7 +87,7 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 
 	return &reader[T]{
 		options:   opt,
-		path:      walPath,
+		path:      datasetPath,
 		fs:        fs,
 		fileIndex: fileIndex,
 	}, nil

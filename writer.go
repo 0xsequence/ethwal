@@ -51,27 +51,21 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		return nil, fmt.Errorf("path cannot be empty")
 	}
 
-	// build WAL path
-	walPath := buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path)
-	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
-		walPath = walPath + string(os.PathSeparator)
-	}
-	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
-		walPath = walPath + string(os.PathSeparator)
-	}
+	// build dataset path
+	datasetPath := opt.Dataset.FullPath()
 
-	// create WAL directory if it doesn't exist on local FS
+	// create dataset directory if it doesn't exist on local FS
 	if _, ok := opt.FileSystem.(*local.LocalFS); ok {
-		if _, err := os.Stat(walPath); os.IsNotExist(err) {
-			err := os.MkdirAll(walPath, 0755)
+		if _, err := os.Stat(datasetPath); os.IsNotExist(err) {
+			err := os.MkdirAll(datasetPath, 0755)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create ethwal directory")
 			}
 		}
 	}
 
-	// mount FS with WAL path prefix
-	fs := storage.NewPrefixWrapper(opt.FileSystem, walPath)
+	// mount FS with dataset path prefix
+	fs := storage.NewPrefixWrapper(opt.FileSystem, datasetPath)
 
 	fileIndex, err := NewFileIndex(fs)
 	if err != nil {
@@ -87,7 +81,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	// create new writer
 	return &writer[T]{
 		options:       opt,
-		path:          walPath,
+		path:          datasetPath,
 		fs:            fs,
 		firstBlockNum: lastBlockNum + 1,
 		lastBlockNum:  lastBlockNum,

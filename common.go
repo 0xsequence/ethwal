@@ -37,8 +37,8 @@ func (d Dataset) FullCachePath() string {
 
 // buildETHWALPath returns the path to the WAL directory
 // The path is built as follows: <walPath>/<name?>/<version?>
-func buildETHWALPath(name, version, walPath string) string {
-	var parts = []string{walPath}
+func buildETHWALPath(name, version, rootPath string) string {
+	var parts = []string{rootPath}
 
 	if name != "" {
 		parts = append(parts, name)
@@ -48,7 +48,11 @@ func buildETHWALPath(name, version, walPath string) string {
 		parts = append(parts, version)
 	}
 
-	return path.Join(walPath, name, version)
+	retPath := path.Join(parts...)
+	if len(retPath) > 0 && retPath[len(retPath)-1] != os.PathSeparator {
+		retPath = retPath + string(os.PathSeparator)
+	}
+	return retPath
 }
 
 type Options struct {
@@ -70,8 +74,7 @@ type Options struct {
 
 func (o Options) WithDefaults() Options {
 	if o.FileSystem == nil {
-		wd, _ := os.Getwd()
-		o.FileSystem = local.NewLocalFS(wd)
+		o.FileSystem = local.NewLocalFS("")
 	}
 	if o.PrefetchTimeout == 0 {
 		o.PrefetchTimeout = 30 * time.Second
@@ -347,8 +350,8 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]*File, error) {
 		}
 
 		indexFile, err = fs.Open(context.Background(), FileIndexFileName, nil)
-		if err != nil {
-			return nil, err
+		if err != nil && strings.Contains(err.Error(), "not exist") {
+			return []*File{}, nil
 		}
 	}
 	if err != nil {
@@ -384,13 +387,13 @@ func ListFiles(ctx context.Context, fs storage.FS) ([]*File, error) {
 func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	wlk, ok := fs.(storage.Walker)
 	if !ok {
-		return fmt.Errorf("ethlogwal: provided file system does not implement Walker interface")
+		return fmt.Errorf("ethwal: provided file system does not implement Walker interface")
 	}
 
 	var files []*File
 	err := wlk.Walk(ctx, "", func(filePath string) error {
-		// walk only wal files
-		if path.Ext(filePath) != ".wal" {
+		// walk only wal files in current directory
+		if path.Ext(filePath) != ".wal" || path.Dir(filePath) != "." {
 			return nil
 		}
 
@@ -404,6 +407,10 @@ func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	if len(files) == 0 {
+		return nil
 	}
 
 	fileIndex := NewFileIndexFromFiles(fs, files)

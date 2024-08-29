@@ -7,8 +7,10 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -353,9 +355,90 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 }
 
 func Test_ReaderFileIndexAhead(t *testing.T) {
-	t.Skip()
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	fs := local.NewLocalFS(path.Join(testPath, "int-wal", defaultDatasetVersion))
+
+	files, err := ListFiles(context.Background(), fs)
+	require.NoError(t, err)
+
+	fi := NewFileIndexFromFiles(fs, files)
+	require.NotNil(t, fi)
+
+	err = fi.AddFile(&File{
+		FirstBlockNum: 13,
+		LastBlockNum:  14,
+	})
+	require.Nil(t, err)
+
+	err = fi.Save(context.Background())
+	require.Nil(t, err)
+
+	// check seek
+	rdr, err := NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	require.NoError(t, err)
+
+	err = rdr.Seek(context.Background(), 13)
+	assert.Error(t, err)
+
+	err = rdr.Close()
+	require.NoError(t, err)
+
+	// check read
+	rdr, err = NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	defer rdr.Close()
+	require.NoError(t, err)
+
+	var lastBlockNum uint64
+	for {
+		b, err := rdr.Read(context.Background())
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+
+		lastBlockNum = b.Number
+	}
+
+	assert.Equal(t, uint64(12), lastBlockNum)
 }
 
 func Test_ReaderPrefetch(t *testing.T) {
-	t.Skip()
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	rdr, err := NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	defer rdr.Close()
+	require.NoError(t, err)
+
+	fileIndex := rdr.(*reader[int]).fileIndex
+	require.NotNil(t, fileIndex)
+
+	for i := 0; i < 5; i++ {
+		_, err = rdr.Read(context.Background())
+		require.NoError(t, err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	assert.NotNil(t, fileIndex.Files()[2].prefetchBuffer) // 5_8.wal file is prefetched
 }

@@ -180,7 +180,7 @@ func (r *reader[T]) Seek(ctx context.Context, blockNum uint64) error {
 	defer r.mu.Unlock()
 
 	_, fileIndex, err := r.fileIndex.FindFile(blockNum)
-	if err != nil && errors.Is(err, ErrFileNotFound) {
+	if err != nil && errors.Is(err, ErrFileNotExist) {
 		return io.EOF
 	}
 	if err != nil {

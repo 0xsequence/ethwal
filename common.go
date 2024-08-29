@@ -92,9 +92,7 @@ const FileIndexFileName = ".fileIndex"
 const NumberOfDirectoriesPerLevel = 1000 // since there are 3 levels the maximal number of directories is 1000^3 = 1_000_000_000
 
 var (
-	ErrFileNotFound     = fmt.Errorf("file not found")
-	ErrFileAlreadyExist = fmt.Errorf("file already exist")
-	ErrFailedToMkdir    = fmt.Errorf("failed to create file directory")
+	ErrFileNotExist = fmt.Errorf("file does not exist")
 )
 
 type File struct {
@@ -138,7 +136,7 @@ func (f *File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 			err = os.MkdirAll(dirPath, 0755)
 			if err != nil {
-				return nil, ErrFailedToMkdir
+				return nil, fmt.Errorf("failed to create file directory")
 			}
 		}
 	}
@@ -206,7 +204,15 @@ func (f *File) open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
 	if f.exist(ctx, fs) {
 		return fs.Open(ctx, f.Path(), nil)
 	}
-	return fs.Open(ctx, f.legacyPath(), nil)
+
+	file, err := fs.Open(ctx, f.legacyPath(), nil)
+	if err != nil && strings.Contains(err.Error(), "not exist") {
+		return nil, ErrFileNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }
 
 func (f *File) prefetched() io.ReadCloser {
@@ -268,9 +274,9 @@ func (fi *FileIndex) Files() []*File {
 }
 
 func (fi *FileIndex) AddFile(file *File) error {
-	_, _, err := fi.FindFile(file.LastBlockNum)
+	_, _, err := fi.FindFile(file.FirstBlockNum)
 	if err == nil {
-		return fmt.Errorf("%w: block %d", ErrFileAlreadyExist, file.LastBlockNum)
+		return fmt.Errorf("file already exist: block %d", file.FirstBlockNum)
 	}
 
 	fi.files = append(fi.files, file)
@@ -278,6 +284,9 @@ func (fi *FileIndex) AddFile(file *File) error {
 }
 
 func (fi *FileIndex) At(index int) *File {
+	if index < 0 || index >= len(fi.files) {
+		return nil
+	}
 	return fi.files[index]
 }
 
@@ -286,7 +295,7 @@ func (fi *FileIndex) FindFile(blockNum uint64) (*File, int, error) {
 		return blockNum <= fi.files[i].LastBlockNum
 	})
 	if i == len(fi.files) {
-		return nil, 0, ErrFileNotFound
+		return nil, 0, ErrFileNotExist
 	}
 	return fi.files[i], i, nil
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -289,7 +290,38 @@ func Test_WriterStoragePathSuffix(t *testing.T) {
 }
 
 func Test_WriterFileIndexAhead(t *testing.T) {
-	t.Skip()
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	fs := local.NewLocalFS(path.Join(testPath, "int-wal", defaultDatasetVersion))
+
+	files, err := ListFiles(context.Background(), fs)
+	require.NoError(t, err)
+
+	fi := NewFileIndexFromFiles(fs, files)
+	require.NotNil(t, fi)
+
+	err = fi.AddFile(&File{
+		FirstBlockNum: 13,
+		LastBlockNum:  14,
+	})
+	require.Nil(t, err)
+
+	err = fi.Save(context.Background())
+	require.Nil(t, err)
+
+	// test
+	w, err := NewWriter[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	defer w.Close(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(12), w.BlockNum())
 }
 
 func BenchmarkWriter_Write(b *testing.B) {

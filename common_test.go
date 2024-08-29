@@ -180,7 +180,17 @@ func TestFile_Prefetch(t *testing.T) {
 }
 
 func TestNewFileIndex(t *testing.T) {
-	t.Skip()
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	fs := local.NewLocalFS(path.Join(testPath, "int-wal", defaultDatasetVersion))
+
+	fileIndex, err := NewFileIndex(fs)
+	require.NoError(t, err)
+	require.NotNil(t, fileIndex)
+
+	assert.Equal(t, fs, fileIndex.fs)
+	assert.Len(t, fileIndex.files, 3)
 }
 
 func TestNewFileIndexFromFiles(t *testing.T) {

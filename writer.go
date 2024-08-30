@@ -67,7 +67,14 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	// mount FS with dataset path prefix
 	fs := storage.NewPrefixWrapper(opt.FileSystem, datasetPath)
 
-	fileIndex, err := NewFileIndex(fs)
+	// create file index
+	fileIndex := NewFileIndex(fs)
+
+	// load file index
+	ctx, cancel := context.WithTimeout(context.Background(), loadIndexFileTimeout)
+	defer cancel()
+
+	err := fileIndex.Load(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load file index: %w", err)
 	}
@@ -210,6 +217,7 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 
 		_, err = f.Write(w.buffer.Bytes())
 		if err != nil {
+			_ = f.Close()
 			return err
 		}
 

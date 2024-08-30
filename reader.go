@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/fatih/structs"
 
@@ -15,6 +16,7 @@ import (
 )
 
 const firstFileIndex = 0
+const loadIndexFileTimeout = 30 * time.Second
 
 type Reader[T any] interface {
 	FilesNum() int
@@ -80,7 +82,14 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	// add prefix to file system
 	fs = storage.NewPrefixWrapper(fs, datasetPath)
 
-	fileIndex, err := NewFileIndex(fs)
+	// create file index
+	fileIndex := NewFileIndex(fs)
+
+	// load file index
+	ctx, cancel := context.WithTimeout(context.Background(), loadIndexFileTimeout)
+	defer cancel()
+
+	err := fileIndex.Load(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load file index: %w", err)
 	}

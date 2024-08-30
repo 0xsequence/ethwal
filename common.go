@@ -103,6 +103,7 @@ type File struct {
 	LastBlockNum  uint64 `json:"lastBlockNum" cbor:"1,keyasint"`
 
 	prefetchBuffer []byte
+	prefetchCtx    context.Context
 
 	mu sync.Mutex
 }
@@ -153,12 +154,13 @@ func (f *File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error
 
 	filePath := f.Path()
 	if _, ok := fs.(*local.LocalFS); ok {
+		var err error
 		dirPath := path.Dir(filePath)
-		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		if _, err = os.Stat(dirPath); os.IsNotExist(err) {
 			err = os.MkdirAll(dirPath, 0755)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create file directory")
-			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to create file directory")
 		}
 	}
 	return fs.Create(ctx, filePath, nil)
@@ -190,18 +192,14 @@ func (f *File) Prefetch(ctx context.Context, fs storage.FS) error {
 
 	buff, err := io.ReadAll(rdr)
 	if err != nil {
-		return err
-	}
-
-	err = rdr.Close()
-	if err != nil {
+		_ = rdr.Close()
 		return err
 	}
 
 	f.mu.Lock()
 	f.prefetchBuffer = buff
 	f.mu.Unlock()
-	return nil
+	return rdr.Close()
 }
 
 func (f *File) PrefetchClear() {
@@ -261,22 +259,26 @@ func (f *File) existLegacy(ctx context.Context, fs storage.FS) bool {
 	return true
 }
 
+// ListFiles lists all ethwal files in the provided file system root directory
+func ListFiles(ctx context.Context, fs storage.FS) ([]*File, error) {
+	fileIndex := NewFileIndex(fs)
+
+	err := fileIndex.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return fileIndex.Files(), nil
+}
+
 type FileIndex struct {
 	fs storage.FS
 
 	files []*File
 }
 
-func NewFileIndex(fs storage.FS) (*FileIndex, error) {
-	files, err := ListFiles(context.Background(), fs)
-	if err != nil {
-		return nil, err
-	}
-
-	return &FileIndex{
-		fs:    fs,
-		files: files,
-	}, nil
+func NewFileIndex(fs storage.FS) *FileIndex {
+	return &FileIndex{fs: fs}
 }
 
 func NewFileIndexFromFiles(fs storage.FS, files []*File) *FileIndex {
@@ -321,7 +323,16 @@ func (fi *FileIndex) FindFile(blockNum uint64) (*File, int, error) {
 	return fi.files[i], i, nil
 }
 
+func (fi *FileIndex) IsLoaded() bool {
+	return fi.files != nil
+}
+
+func (fi *FileIndex) Load(ctx context.Context) error {
+	return fi.loadFiles(ctx)
+}
+
 func (fi *FileIndex) Save(ctx context.Context) error {
+	// create file index file
 	indexFile, err := fi.fs.Create(ctx, FileIndexFileName, nil)
 	if err != nil {
 		return err
@@ -329,57 +340,84 @@ func (fi *FileIndex) Save(ctx context.Context) error {
 
 	comp := NewZSTDCompressor(indexFile)
 	enc := NewCBOREncoder(comp)
-	for _, file := range fi.files {
-		_ = enc.Encode(file)
+
+	// close all resources
+	closeAll := func() error {
+		if err := comp.Close(); err != nil {
+			_ = indexFile.Close()
+		}
+		return indexFile.Close()
 	}
 
-	err = comp.Close()
-	if err != nil {
-		return err
+	// write all files
+	for _, file := range fi.files {
+		err = enc.Encode(file)
+		if err != nil {
+			_ = closeAll()
+			return err
+		}
 	}
+	return closeAll()
+}
+
+func (fi *FileIndex) loadFiles(ctx context.Context) error {
+	// check if file index exists, if not migrate all existing ethwal files to the file index
+	indexFile, openErr := fi.fs.Open(context.Background(), FileIndexFileName, nil)
+	if openErr != nil && strings.Contains(openErr.Error(), "not exist") {
+		// migrate all existing ethwal files to the file index
+		migrationErr := migrateToFileIndex(ctx, fi.fs)
+		if migrationErr != nil {
+			return migrationErr
+		}
+
+		// open file index
+		indexFile, openErr = fi.fs.Open(context.Background(), FileIndexFileName, nil)
+		if openErr != nil && strings.Contains(openErr.Error(), "not exist") {
+			// no files exist, so we return an empty list
+			fi.files = []*File{}
+			return nil
+		}
+	}
+	if openErr != nil {
+		return openErr
+	}
+
+	files, readErr := fi.readFiles(ctx, indexFile)
+	if readErr != nil {
+		_ = indexFile.Close()
+		return readErr
+	}
+
+	fi.files = files
 	return indexFile.Close()
 }
 
-// ListFiles lists all WAL files in the provided file system
-func ListFiles(ctx context.Context, fs storage.FS) ([]*File, error) {
-	indexFile, err := fs.Open(context.Background(), FileIndexFileName, nil)
-	if err != nil && strings.Contains(err.Error(), "not exist") {
-		err = migrateToFileIndex(ctx, fs)
-		if err != nil {
-			return nil, err
-		}
-
-		indexFile, err = fs.Open(context.Background(), FileIndexFileName, nil)
-		if err != nil && strings.Contains(err.Error(), "not exist") {
-			return []*File{}, nil
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer indexFile.Close()
-
+func (fi *FileIndex) readFiles(ctx context.Context, rdr io.Reader) ([]*File, error) {
 	var files []*File
-	decomp := NewZSTDDecompressor(indexFile)
+	decomp := NewZSTDDecompressor(rdr)
 	dec := NewCBORDecoder(decomp)
 
 	for {
 		var file File
-		err = dec.Decode(&file)
+		err := dec.Decode(&file)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
+			_ = decomp.Close()
 			return nil, err
 		}
 		files = append(files, &file)
 	}
 
 	// remove last file if it does not exist, it may be incomplete due to crash
-	if len(files) != 0 && !files[len(files)-1].Exist(ctx, fs) {
+	if len(files) != 0 && !files[len(files)-1].Exist(ctx, fi.fs) {
 		files = files[:len(files)-1]
 	}
 
+	if err := decomp.Close(); err != nil {
+		return nil, err
+	}
 	return files, nil
 }
 

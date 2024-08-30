@@ -185,7 +185,9 @@ func TestNewFileIndex(t *testing.T) {
 
 	fs := local.NewLocalFS(path.Join(testPath, "int-wal", defaultDatasetVersion))
 
-	fileIndex, err := NewFileIndex(fs)
+	fileIndex := NewFileIndex(fs)
+
+	err := fileIndex.Load(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, fileIndex)
 

@@ -275,7 +275,7 @@ func (r *reader[T]) prefetchNextFile(ctx context.Context) {
 }
 
 func (r *reader[T]) prefetchFile(ctx context.Context, file *File) {
-	pCtx, cancel := context.WithTimeout(ctx, r.options.PrefetchTimeout)
+	pCtx, cancel := context.WithTimeout(ctx, r.options.FilePrefetchTimeout)
 	defer cancel()
 
 	_ = file.Prefetch(pCtx, r.fs)

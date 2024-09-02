@@ -55,12 +55,14 @@ func buildETHWALPath(name, version, rootPath string) string {
 	return retPath
 }
 
+const (
+	defaultPrefetchTimeout = 30 * time.Second
+)
+
 type Options struct {
 	Dataset Dataset
 
 	FileSystem storage.FS
-
-	PrefetchTimeout time.Duration
 
 	NewCompressor   NewCompressorFunc
 	NewDecompressor NewDecompressorFunc
@@ -70,14 +72,16 @@ type Options struct {
 
 	FileRollPolicy  FileRollPolicy
 	FileRollOnClose bool
+
+	FilePrefetchTimeout time.Duration
 }
 
 func (o Options) WithDefaults() Options {
 	if o.FileSystem == nil {
 		o.FileSystem = local.NewLocalFS("")
 	}
-	if o.PrefetchTimeout == 0 {
-		o.PrefetchTimeout = 30 * time.Second
+	if o.FilePrefetchTimeout == 0 {
+		o.FilePrefetchTimeout = defaultPrefetchTimeout
 	}
 	if o.NewEncoder == nil {
 		o.NewEncoder = NewCBOREncoder
@@ -345,6 +349,7 @@ func (fi *FileIndex) Save(ctx context.Context) error {
 	closeAll := func() error {
 		if err := comp.Close(); err != nil {
 			_ = indexFile.Close()
+			return err
 		}
 		return indexFile.Close()
 	}

@@ -8,11 +8,9 @@ import (
 	"os"
 	"sync"
 
-	"github.com/c2h5oh/datasize"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
+	"github.com/c2h5oh/datasize"
 )
 
 const defaultBufferSize = 8 * datasize.MB
@@ -196,42 +194,32 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 		return err
 	}
 
-	// save file in parallel
-	grp, grpCtx := errgroup.WithContext(ctx)
-
 	// save file index
-	grp.Go(func() error {
-		err := w.fileIndex.Save(grpCtx)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
+	err = w.fileIndex.Save(ctx)
+	if err != nil {
+		return err
+	}
 
 	// save file
-	grp.Go(func() error {
-		f, err := newFile.Create(grpCtx, w.fs)
-		if err != nil {
-			return err
-		}
+	f, err := newFile.Create(ctx, w.fs)
+	if err != nil {
+		return err
+	}
 
-		_, err = f.Write(w.buffer.Bytes())
-		if err != nil {
-			_ = f.Close()
-			return err
-		}
+	_, err = f.Write(w.buffer.Bytes())
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
 
-		err = f.Close()
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
+	err = f.Close()
+	if err != nil {
+		return err
+	}
 
 	// wait for both file and file index to be saved
 	// todo: save in background
-	return grp.Wait()
+	return nil
 }
 
 func (w *writer[T]) newFile() error {

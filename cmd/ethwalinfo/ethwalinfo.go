@@ -60,7 +60,7 @@ func main() {
 			// mount fs to dataset path
 			fs = storage.NewPrefixWrapper(fs, dataset.FullPath())
 
-			walFiles, err := ethwal.ListWALFiles(fs)
+			walFiles, err := ethwal.ListFiles(c.Context, fs)
 			if err != nil {
 				return err
 			}
@@ -75,7 +75,11 @@ func main() {
 			}
 			fmt.Println("Path:", dataset.Path)
 			fmt.Println("Number of files:", len(walFiles))
-			fmt.Println("Block range:", walFiles[0].FirstBlockNum, "-", walFiles[len(walFiles)-1].LastBlockNum)
+			if len(walFiles) > 0 {
+				fmt.Println("Block range:", walFiles[0].FirstBlockNum, "-", walFiles[len(walFiles)-1].LastBlockNum)
+			} else {
+				fmt.Println("Block range: -")
+			}
 
 			return nil
 		},

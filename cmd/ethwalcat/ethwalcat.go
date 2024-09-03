@@ -148,29 +148,29 @@ func main() {
 			FileRollOnCloseFlag,
 			GoogleCloudBucket,
 		},
-		Action: func(context *cli.Context) error {
-			switch context.String(ModeFlag.Name) {
+		Action: func(c *cli.Context) error {
+			switch c.String(ModeFlag.Name) {
 			case "read":
-				dec, err := decoder(context)
+				dec, err := decoder(c)
 				if err != nil {
 					return err
 				}
 
-				decomp, err := decompressor(context)
+				decomp, err := decompressor(c)
 				if err != nil {
 					return err
 				}
 
 				var fs storage.FS
-				if bucket := context.String(GoogleCloudBucket.Name); bucket != "" {
+				if bucket := c.String(GoogleCloudBucket.Name); bucket != "" {
 					fs = gcloud.NewGCloudFS(bucket, nil)
 				}
 
 				r, err := ethwal.NewReader[any](ethwal.Options{
 					Dataset: ethwal.Dataset{
-						Name:    context.String(DatasetNameFlag.Name),
-						Version: context.String(DatasetVersion.Name),
-						Path:    context.String(DatasetPathFlag.Name),
+						Name:    c.String(DatasetNameFlag.Name),
+						Version: c.String(DatasetVersion.Name),
+						Path:    c.String(DatasetPathFlag.Name),
 					},
 					FileSystem:      fs,
 					NewDecoder:      dec,
@@ -180,22 +180,22 @@ func main() {
 					return err
 				}
 
-				if context.Uint64(FromBlockNumFlag.Name) > 0 {
-					err = r.Seek(context.Uint64(FromBlockNumFlag.Name))
+				if c.Uint64(FromBlockNumFlag.Name) > 0 {
+					err = r.Seek(c.Context, c.Uint64(FromBlockNumFlag.Name))
 					if err != nil {
 						return err
 					}
 				}
 
-				var toBlockNumber = context.Uint64(ToBlockNumFlag.Name)
+				var toBlockNumber = c.Uint64(ToBlockNumFlag.Name)
 
-				for b, err := r.Read(); err == nil; b, err = r.Read() {
+				for b, err := r.Read(c.Context); err == nil; b, err = r.Read(c.Context) {
 					if toBlockNumber != 0 && b.Number >= toBlockNumber {
 						break
 					}
 
 					// cbor deserializes into map[interface{}]interface{} which can not be serialized into json
-					if context.String(DecoderFlag.Name) == "cbor" {
+					if c.String(DecoderFlag.Name) == "cbor" {
 						b.Data = normalizeDataFromCBOR(b.Data)
 					}
 
@@ -220,32 +220,32 @@ func main() {
 					return err
 				}
 			case "write":
-				enc, err := encoder(context)
+				enc, err := encoder(c)
 				if err != nil {
 					return err
 				}
 
-				compres, err := compressor(context)
+				compres, err := compressor(c)
 				if err != nil {
 					return err
 				}
 
 				var fs storage.FS
-				if bucket := context.String(GoogleCloudBucket.Name); bucket != "" {
+				if bucket := c.String(GoogleCloudBucket.Name); bucket != "" {
 					fs = gcloud.NewGCloudFS(bucket, nil)
 				}
 
 				w, err := ethwal.NewWriter[any](ethwal.Options{
 					Dataset: ethwal.Dataset{
-						Name:    context.String(DatasetNameFlag.Name),
-						Version: context.String(DatasetVersion.Name),
-						Path:    context.String(DatasetPathFlag.Name),
+						Name:    c.String(DatasetNameFlag.Name),
+						Version: c.String(DatasetVersion.Name),
+						Path:    c.String(DatasetPathFlag.Name),
 					},
 					FileSystem:      fs,
 					NewEncoder:      enc,
 					NewCompressor:   compres,
 					FileRollPolicy:  ethwal.NewFileSizeRollPolicy(uint64(8 << 20)), // 8 MB
-					FileRollOnClose: context.Bool(FileRollOnCloseFlag.Name),
+					FileRollOnClose: c.Bool(FileRollOnCloseFlag.Name),
 				})
 				if err != nil {
 					return err
@@ -260,11 +260,11 @@ func main() {
 					}
 
 					// cbor needs to have hashes represented as byte slices
-					if context.String(EncoderFlag.Name) == "cbor" {
+					if c.String(EncoderFlag.Name) == "cbor" {
 						b.Data = normalizeDataToCBOR(b.Data)
 					}
 
-					err = w.Write(b)
+					err = w.Write(c.Context, b)
 					if err != nil {
 						return err
 					}
@@ -274,12 +274,12 @@ func main() {
 					return err
 				}
 
-				err = w.Close()
+				err = w.Close(c.Context)
 				if err != nil {
 					return err
 				}
 			default:
-				return fmt.Errorf("unknown mode: %s", context.String(ModeFlag.Name))
+				return fmt.Errorf("unknown mode: %s", c.String(ModeFlag.Name))
 			}
 
 			return nil

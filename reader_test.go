@@ -1,13 +1,16 @@
 package ethwal
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -207,7 +210,7 @@ func TestReader_Read(t *testing.T) {
 
 			var blk Block[int]
 			var blks []Block[int]
-			for blk, err = rdr.Read(); err == nil; blk, err = rdr.Read() {
+			for blk, err = rdr.Read(context.Background()); err == nil; blk, err = rdr.Read(context.Background()) {
 				//t.Logf("blk: %+v", blk)
 				blks = append(blks, blk)
 			}
@@ -235,7 +238,7 @@ func TestReader_NumWALFiles(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, 3, rdr.NumWALFiles())
+	assert.Equal(t, 3, rdr.FilesNum())
 
 	require.NoError(t, rdr.Close())
 }
@@ -257,23 +260,23 @@ func TestReader_BlockNum(t *testing.T) {
 
 	assert.Equal(t, uint64(0), rdr.BlockNum())
 
-	blk, err := rdr.Read()
+	blk, err := rdr.Read(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(1), blk.Number)
 	assert.Equal(t, uint64(1), rdr.BlockNum())
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(2), blk.Number)
 	assert.Equal(t, uint64(2), rdr.BlockNum())
 
-	err = rdr.Seek(5)
+	err = rdr.Seek(context.Background(), 5)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(4), rdr.BlockNum()) // last block read was 4 next block is 5
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(5), blk.Number)
@@ -298,38 +301,38 @@ func TestReader_Seek(t *testing.T) {
 	require.NoError(t, err)
 
 	// seek to 2
-	err = rdr.Seek(2)
+	err = rdr.Seek(context.Background(), 2)
 	require.NoError(t, err)
 
-	blk, err := rdr.Read()
+	blk, err := rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), blk.Number)
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(3), blk.Number)
 
 	// seek to 10, which does not exist but there is a file with block 11
-	err = rdr.Seek(10)
+	err = rdr.Seek(context.Background(), 10)
 	require.NoError(t, err)
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(11), blk.Number)
 
-	blk, err = rdr.Read()
+	blk, err = rdr.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(12), blk.Number)
 
-	_, err = rdr.Read()
+	_, err = rdr.Read(context.Background())
 	require.Equal(t, io.EOF, err)
 
 	//  reader should return EOF on consecutive reads
-	_, err = rdr.Read()
+	_, err = rdr.Read(context.Background())
 	require.Equal(t, io.EOF, err)
 
 	// seek to 50 which does not exist and there is no file with block 50 or higher
-	err = rdr.Seek(50)
+	err = rdr.Seek(context.Background(), 50)
 	require.Equal(t, io.EOF, err)
 }
 
@@ -349,4 +352,93 @@ func Test_ReaderStoragePathSuffix(t *testing.T) {
 	reader, ok := r.(*reader[int])
 	require.True(t, ok)
 	require.Equal(t, string(reader.path[len(reader.path)-1]), string(os.PathSeparator))
+}
+
+func Test_ReaderFileIndexAhead(t *testing.T) {
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	fs := local.NewLocalFS(path.Join(testPath, "int-wal", defaultDatasetVersion))
+
+	files, err := ListFiles(context.Background(), fs)
+	require.NoError(t, err)
+
+	fi := NewFileIndexFromFiles(fs, files)
+	require.NotNil(t, fi)
+
+	err = fi.AddFile(&File{
+		FirstBlockNum: 13,
+		LastBlockNum:  14,
+	})
+	require.Nil(t, err)
+
+	err = fi.Save(context.Background())
+	require.Nil(t, err)
+
+	// check seek
+	rdr, err := NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	require.NoError(t, err)
+
+	err = rdr.Seek(context.Background(), 13)
+	assert.Error(t, err)
+
+	err = rdr.Close()
+	require.NoError(t, err)
+
+	// check read
+	rdr, err = NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	defer rdr.Close()
+	require.NoError(t, err)
+
+	var lastBlockNum uint64
+	for {
+		b, err := rdr.Read(context.Background())
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+
+		lastBlockNum = b.Number
+	}
+
+	assert.Equal(t, uint64(12), lastBlockNum)
+}
+
+func Test_ReaderPrefetch(t *testing.T) {
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	rdr, err := NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	defer rdr.Close()
+	require.NoError(t, err)
+
+	fileIndex := rdr.(*reader[int]).fileIndex
+	require.NotNil(t, fileIndex)
+
+	for i := 0; i < 5; i++ {
+		_, err = rdr.Read(context.Background())
+		require.NoError(t, err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	assert.NotNil(t, fileIndex.Files()[2].prefetchBuffer) // 5_8.wal file is prefetched
 }

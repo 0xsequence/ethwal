@@ -56,6 +56,7 @@ func (c *GoogleCloudChecksumWriter) Close() error {
 	c.writer.SendCRC32C = true
 	_, err := c.writer.Write(c.buffer.Bytes())
 	if err != nil {
+		_ = c.writer.Close()
 		return err
 	}
 	return c.writer.Close()

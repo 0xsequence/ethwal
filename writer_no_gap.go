@@ -1,5 +1,7 @@
 package ethwal
 
+import "context"
+
 type noGapWriter[T any] struct {
 	w Writer[T]
 
@@ -10,7 +12,7 @@ func NewWriterNoGap[T any](w Writer[T]) Writer[T] {
 	return &noGapWriter[T]{w: w}
 }
 
-func (n *noGapWriter[T]) Write(b Block[T]) error {
+func (n *noGapWriter[T]) Write(ctx context.Context, b Block[T]) error {
 	defer func() { n.lastBlockNum = b.Number }()
 
 	// skip if block number is less than or equal to last block number
@@ -20,27 +22,27 @@ func (n *noGapWriter[T]) Write(b Block[T]) error {
 
 	// write blocks as there is no gap
 	if b.Number == n.lastBlockNum+1 {
-		return n.w.Write(b)
+		return n.w.Write(ctx, b)
 	}
 
 	// write missing blocks
 	for i := n.lastBlockNum + 1; i < b.Number; i++ {
-		err := n.w.Write(Block[T]{Number: i})
+		err := n.w.Write(ctx, Block[T]{Number: i})
 		if err != nil {
 			return err
 		}
 	}
-	return n.w.Write(b)
+	return n.w.Write(ctx, b)
 }
 
-func (n *noGapWriter[T]) RollFile() error {
-	return n.w.RollFile()
+func (n *noGapWriter[T]) RollFile(ctx context.Context) error {
+	return n.w.RollFile(ctx)
 }
 
 func (n *noGapWriter[T]) BlockNum() uint64 {
 	return n.w.BlockNum()
 }
 
-func (n *noGapWriter[T]) Close() error {
-	return n.w.Close()
+func (n *noGapWriter[T]) Close(ctx context.Context) error {
+	return n.w.Close(ctx)
 }

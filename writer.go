@@ -8,19 +8,15 @@ import (
 	"os"
 	"sync"
 
-	"github.com/c2h5oh/datasize"
-
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
 )
 
-const defaultBufferSize = 8 * datasize.MB
-
 type Writer[T any] interface {
-	Write(b Block[T]) error
+	Write(ctx context.Context, b Block[T]) error
 	BlockNum() uint64
-	RollFile() error
-	Close() error
+	RollFile(ctx context.Context) error
+	Close(ctx context.Context) error
 }
 
 type writer[T any] struct {
@@ -35,6 +31,8 @@ type writer[T any] struct {
 	firstBlockNum uint64
 	lastBlockNum  uint64
 
+	fileIndex *FileIndex
+
 	encoder Encoder
 
 	mu sync.Mutex
@@ -45,53 +43,56 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	opt = opt.WithDefaults()
 
 	if opt.Dataset.Path == "" {
-		return nil, fmt.Errorf("wal path cannot be empty")
+		return nil, fmt.Errorf("path cannot be empty")
 	}
 
-	// build WAL path
-	walPath := buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path)
-	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
-		walPath = walPath + string(os.PathSeparator)
-	}
-	if len(walPath) > 0 && walPath[len(walPath)-1] != os.PathSeparator {
-		walPath = walPath + string(os.PathSeparator)
-	}
+	// build dataset path
+	datasetPath := opt.Dataset.FullPath()
 
-	// create WAL directory if it doesn't exist on local FS
+	// create dataset directory if it doesn't exist on local FS
 	if _, ok := opt.FileSystem.(*local.LocalFS); ok {
-		if _, err := os.Stat(walPath); os.IsNotExist(err) {
-			err := os.MkdirAll(walPath, 0755)
+		if _, err := os.Stat(datasetPath); os.IsNotExist(err) {
+			err := os.MkdirAll(datasetPath, 0755)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create WAL directory")
+				return nil, fmt.Errorf("failed to create ethwal directory")
 			}
 		}
 	}
 
-	// mount FS with WAL path prefix
-	fs := storage.NewPrefixWrapper(opt.FileSystem, walPath)
+	// mount FS with dataset path prefix
+	fs := storage.NewPrefixWrapper(opt.FileSystem, datasetPath)
 
-	walFiles, err := ListWALFiles(fs)
+	// create file index
+	fileIndex := NewFileIndex(fs)
+
+	// load file index
+	ctx, cancel := context.WithTimeout(context.Background(), loadIndexFileTimeout)
+	defer cancel()
+
+	err := fileIndex.Load(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load WAL file list: %w", err)
+		return nil, fmt.Errorf("failed to load file index: %w", err)
 	}
 
 	var lastBlockNum uint64
-	if len(walFiles) > 0 {
-		lastBlockNum = walFiles[len(walFiles)-1].LastBlockNum
+	var fileIndexFileList = fileIndex.Files()
+	if len(fileIndexFileList) > 0 {
+		lastBlockNum = fileIndexFileList[len(fileIndexFileList)-1].LastBlockNum
 	}
 
 	// create new writer
 	return &writer[T]{
 		options:       opt,
-		path:          walPath,
+		path:          datasetPath,
 		fs:            fs,
 		firstBlockNum: lastBlockNum + 1,
 		lastBlockNum:  lastBlockNum,
-		buffer:        bytes.NewBuffer(make([]byte, 0, defaultBufferSize)),
+		fileIndex:     fileIndex,
+		buffer:        bytes.NewBuffer(make([]byte, 0, defaultFileSize)),
 	}, nil
 }
 
-func (w *writer[T]) Write(b Block[T]) error {
+func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -100,14 +101,14 @@ func (w *writer[T]) Write(b Block[T]) error {
 	}
 
 	if !w.isReadyToWrite() || w.options.FileRollPolicy.ShouldRoll() {
-		if err := w.rollFile(); err != nil {
-			return fmt.Errorf("failed to roll to the next WAL file: %w", err)
+		if err := w.rollFile(ctx); err != nil {
+			return fmt.Errorf("failed to roll to the next file: %w", err)
 		}
 	}
 
 	err := w.encoder.Encode(b)
 	if err != nil {
-		return fmt.Errorf("failed to encode WAL data: %w", err)
+		return fmt.Errorf("failed to encode file data: %w", err)
 	}
 
 	w.lastBlockNum = b.Number
@@ -115,10 +116,10 @@ func (w *writer[T]) Write(b Block[T]) error {
 	return nil
 }
 
-func (w *writer[T]) RollFile() error {
+func (w *writer[T]) RollFile(ctx context.Context) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.rollFile()
+	return w.rollFile(ctx)
 }
 
 func (w *writer[T]) BlockNum() uint64 {
@@ -127,7 +128,7 @@ func (w *writer[T]) BlockNum() uint64 {
 	return w.lastBlockNum
 }
 
-func (w *writer[T]) Close() error {
+func (w *writer[T]) Close(ctx context.Context) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -144,7 +145,7 @@ func (w *writer[T]) Close() error {
 				return err
 			}
 
-			err = w.writeFile()
+			err = w.writeFile(ctx)
 			if err != nil {
 				return err
 			}
@@ -158,7 +159,7 @@ func (w *writer[T]) isReadyToWrite() bool {
 	return w.encoder != nil
 }
 
-func (w *writer[T]) rollFile() error {
+func (w *writer[T]) rollFile(ctx context.Context) error {
 	// close previous buffer and write file to fs
 	if w.bufferCloser != nil {
 		// skip if there are no blocks to write
@@ -171,7 +172,7 @@ func (w *writer[T]) rollFile() error {
 			return err
 		}
 
-		err = w.writeFile()
+		err = w.writeFile(ctx)
 		if err != nil {
 			return err
 		}
@@ -180,18 +181,31 @@ func (w *writer[T]) rollFile() error {
 	return w.newFile()
 }
 
-func (w *writer[T]) writeFile() error {
-	f, err := w.fs.Create(
-		context.Background(),
-		fmt.Sprintf("%d_%d.wal", w.firstBlockNum, w.lastBlockNum),
-		nil,
-	)
+func (w *writer[T]) writeFile(ctx context.Context) error {
+	// create new file
+	newFile := &File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
+
+	// add file to file index
+	err := w.fileIndex.AddFile(newFile)
+	if err != nil {
+		return err
+	}
+
+	// save file index
+	err = w.fileIndex.Save(ctx)
+	if err != nil {
+		return err
+	}
+
+	// save file
+	f, err := newFile.Create(ctx, w.fs)
 	if err != nil {
 		return err
 	}
 
 	_, err = f.Write(w.buffer.Bytes())
 	if err != nil {
+		_ = f.Close()
 		return err
 	}
 
@@ -199,6 +213,9 @@ func (w *writer[T]) writeFile() error {
 	if err != nil {
 		return err
 	}
+
+	// wait for both file and file index to be saved
+	// todo: save in background
 	return nil
 }
 

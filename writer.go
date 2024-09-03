@@ -88,7 +88,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		firstBlockNum: lastBlockNum + 1,
 		lastBlockNum:  lastBlockNum,
 		fileIndex:     fileIndex,
-		buffer:        bytes.NewBuffer(make([]byte, 0, defaultBufferSize)),
+		buffer:        bytes.NewBuffer(make([]byte, 0, defaultFileSize)),
 	}, nil
 }
 

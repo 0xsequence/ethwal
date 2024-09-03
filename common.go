@@ -80,7 +80,7 @@ type Options struct {
 }
 
 func (o Options) WithDefaults() Options {
-	o.FileSystem = cmp.Or(o.FileSystem, local.NewLocalFS(""))
+	o.FileSystem = cmp.Or(o.FileSystem, storage.FS(local.NewLocalFS("")))
 	o.FilePrefetchTimeout = cmp.Or(o.FilePrefetchTimeout, defaultPrefetchTimeout)
 	o.FileRollPolicy = cmp.Or(o.FileRollPolicy, NewFileSizeRollPolicy(uint64(defaultFileSize)))
 	if o.NewEncoder == nil {
@@ -226,7 +226,7 @@ func (f *File) open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
 	}
 
 	file, err := fs.Open(ctx, f.legacyPath(), nil)
-	if err != nil && strings.Contains(err.Error(), "not exist") {
+	if err != nil && storage.IsNotExist(err) {
 		return nil, ErrFileNotExist
 	}
 	if err != nil {

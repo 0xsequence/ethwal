@@ -2,6 +2,7 @@ package ethwal
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
+	"github.com/c2h5oh/datasize"
 )
 
 type Dataset struct {
@@ -56,6 +58,7 @@ func buildETHWALPath(name, version, rootPath string) string {
 }
 
 const (
+	defaultFileSize        = 8 * datasize.MB
 	defaultPrefetchTimeout = 30 * time.Second
 )
 
@@ -77,20 +80,14 @@ type Options struct {
 }
 
 func (o Options) WithDefaults() Options {
-	if o.FileSystem == nil {
-		o.FileSystem = local.NewLocalFS("")
-	}
-	if o.FilePrefetchTimeout == 0 {
-		o.FilePrefetchTimeout = defaultPrefetchTimeout
-	}
+	o.FileSystem = cmp.Or(o.FileSystem, local.NewLocalFS(""))
+	o.FilePrefetchTimeout = cmp.Or(o.FilePrefetchTimeout, defaultPrefetchTimeout)
+	o.FileRollPolicy = cmp.Or(o.FileRollPolicy, NewFileSizeRollPolicy(uint64(defaultFileSize)))
 	if o.NewEncoder == nil {
 		o.NewEncoder = NewCBOREncoder
 	}
 	if o.NewDecoder == nil {
 		o.NewDecoder = NewCBORDecoder
-	}
-	if o.FileRollPolicy == nil {
-		o.FileRollPolicy = NewFileSizeRollPolicy(uint64(defaultBufferSize))
 	}
 	return o
 }

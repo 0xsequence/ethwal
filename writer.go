@@ -10,10 +10,7 @@ import (
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
-	"github.com/c2h5oh/datasize"
 )
-
-const defaultBufferSize = 8 * datasize.MB
 
 type Writer[T any] interface {
 	Write(ctx context.Context, b Block[T]) error

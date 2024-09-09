@@ -17,6 +17,7 @@ type Writer[T any] interface {
 	BlockNum() uint64
 	RollFile(ctx context.Context) error
 	Close(ctx context.Context) error
+	SetCallback(func(Block[T]))
 }
 
 type writer[T any] struct {
@@ -34,6 +35,8 @@ type writer[T any] struct {
 	fileIndex *FileIndex
 
 	encoder Encoder
+
+	callback func(Block[T])
 
 	mu sync.Mutex
 }
@@ -111,6 +114,10 @@ func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 		return fmt.Errorf("failed to encode file data: %w", err)
 	}
 
+	if w.callback != nil {
+		w.callback(b)
+	}
+
 	w.lastBlockNum = b.Number
 	w.options.FileRollPolicy.onBlockProcessed(w.lastBlockNum)
 	return nil
@@ -153,6 +160,10 @@ func (w *writer[T]) Close(ctx context.Context) error {
 		w.bufferCloser = nil
 	}
 	return nil
+}
+
+func (w *writer[T]) SetCallback(cb func(Block[T])) {
+	w.callback = cb
 }
 
 func (w *writer[T]) isReadyToWrite() bool {

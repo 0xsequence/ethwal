@@ -168,10 +168,7 @@ func (f *File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error
 }
 
 func (f *File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
-	f.mu.Lock()
 	prefetchedRdr := f.prefetched()
-	f.mu.Unlock()
-
 	if prefetchedRdr != nil {
 		return prefetchedRdr, nil
 	}
@@ -180,10 +177,25 @@ func (f *File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
 
 func (f *File) Prefetch(ctx context.Context, fs storage.FS) error {
 	f.mu.Lock()
+	// check if is already prefetched
 	if f.prefetchBuffer != nil {
 		f.mu.Unlock()
 		return nil
 	}
+	// check if prefetch is in progress
+	if f.prefetchCtx != nil {
+		prefetchCtx := f.prefetchCtx
+		<-prefetchCtx.Done()
+		f.mu.Unlock()
+		return nil
+	}
+
+	// prepare prefetch context
+	prefetchCtx, cancelPrefetch := context.WithCancel(ctx)
+	defer cancelPrefetch()
+
+	// set prefetch context
+	f.prefetchCtx = prefetchCtx
 	f.mu.Unlock()
 
 	rdr, err := f.open(ctx, fs)
@@ -236,11 +248,30 @@ func (f *File) open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {
 }
 
 func (f *File) prefetched() io.ReadCloser {
-	if f.prefetchBuffer != nil {
-		rdr := io.NopCloser(bytes.NewReader(f.prefetchBuffer))
-		f.prefetchBuffer = nil
+	f.mu.Lock()
+	prefetchCtx := f.prefetchCtx
+	prefetchBuffer := f.prefetchBuffer
+	f.prefetchBuffer = nil
+	f.mu.Unlock()
+
+	if prefetchBuffer != nil {
+		// already prefetched
+		rdr := io.NopCloser(bytes.NewReader(prefetchBuffer))
 		return rdr
+	} else if prefetchCtx != nil {
+		// prefetch in progress
+		<-prefetchCtx.Done()
+
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		// check if prefetch was successful
+		if f.prefetchBuffer != nil {
+			rdr := io.NopCloser(bytes.NewReader(f.prefetchBuffer))
+			f.prefetchBuffer = nil
+			return rdr
+		}
 	}
+	// no prefetch
 	return nil
 }
 

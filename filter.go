@@ -15,6 +15,7 @@ type Filter interface {
 type FilterIterator interface {
 	HasNext() bool
 	Next() (uint64, uint16)
+	Peek() (uint64, uint16)
 	Bitmap() *roaring64.Bitmap
 }
 
@@ -148,6 +149,11 @@ func (f *filterIterator) HasNext() bool {
 func (f *filterIterator) Next() (uint64, uint16) {
 	// TODO: how to handle if there's no next?
 	val := f.iter.Next()
+	return IndexCompoundID(val).Split()
+}
+
+func (f *filterIterator) Peek() (uint64, uint16) {
+	val := f.iter.PeekNext()
 	return IndexCompoundID(val).Split()
 }
 

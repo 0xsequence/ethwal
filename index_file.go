@@ -8,17 +8,17 @@ import (
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 )
 
-type indexFile struct {
+type IndexFile struct {
 	fs   storage.FS
 	path string
 }
 
-func newIndexFile(fs storage.FS, indexName IndexName, key string) (*indexFile, error) {
+func NewIndexFile(fs storage.FS, indexName IndexName, key string) (*IndexFile, error) {
 	path := indexPath(string(indexName), key)
-	return &indexFile{fs: fs, path: path}, nil
+	return &IndexFile{fs: fs, path: path}, nil
 }
 
-func (i *indexFile) Read(ctx context.Context) (*roaring64.Bitmap, error) {
+func (i *IndexFile) Read(ctx context.Context) (*roaring64.Bitmap, error) {
 	file, err := i.fs.Open(ctx, i.path, nil)
 	if err != nil {
 		// TODO: decide if we should report an error or just create a new roaring bitmap...
@@ -42,19 +42,12 @@ func (i *indexFile) Read(ctx context.Context) (*roaring64.Bitmap, error) {
 	return bmap, nil
 }
 
-func (i *indexFile) Write(ctx context.Context, bmap *roaring64.Bitmap) error {
+func (i *IndexFile) Write(ctx context.Context, bmap *roaring64.Bitmap) error {
 	file, err := i.fs.Create(ctx, i.path, nil)
 	if err != nil {
 		return fmt.Errorf("failed to open index file: %w", err)
 	}
 	defer file.Close()
-	data, err := bmap.ToBytes()
-	if err != nil {
-		return fmt.Errorf("failed to marshal bitmap: %w", err)
-	}
-	_, err = file.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write bitmap: %w", err)
-	}
-	return nil
+	_, err = bmap.WriteTo(file)
+	return err
 }

@@ -53,7 +53,7 @@ type index[T any] struct {
 var _ Index[any] = (*index[any])(nil)
 
 func (i *index[T]) Fetch(ctx context.Context, indexValue string) (*roaring64.Bitmap, error) {
-	file, err := newIndexFile(i.fs, i.name, indexValue)
+	file, err := NewIndexFile(i.fs, i.name, indexValue)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open index file: %w", err)
 	}
@@ -83,7 +83,7 @@ func (i *index[T]) Store(ctx context.Context, block Block[T]) error {
 	}
 
 	for indexValue, indexIDs := range indexValueMap {
-		file, err := newIndexFile(i.fs, i.name, indexValue)
+		file, err := NewIndexFile(i.fs, i.name, indexValue)
 		if err != nil {
 			return fmt.Errorf("failed to open or create index file: %w", err)
 		}

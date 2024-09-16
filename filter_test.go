@@ -76,7 +76,7 @@ func Test_FilterWriter(t *testing.T) {
 	// filterBuilder, err := NewIndexesFilterBuilder(indexes, fs)
 	// require.NoError(t, err)
 
-	chainLensWriter, err := NewChainLensWriter(writer, indexes, fs)
+	chainLensWriter, err := NewWriterWithIndexBuilder(writer, indexes, fs)
 	require.NoError(t, err)
 
 	for {

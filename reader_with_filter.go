@@ -3,13 +3,15 @@ package ethwal
 import (
 	"context"
 	"io"
+	"math"
 	"reflect"
 )
 
 type chainLensReader[T any] struct {
-	reader   Reader[T]
-	filter   Filter
-	iterator FilterIterator
+	lastBlockNum uint64
+	reader       Reader[T]
+	filter       Filter
+	iterator     FilterIterator
 }
 
 var _ Reader[any] = (*chainLensReader[any])(nil)
@@ -27,13 +29,28 @@ func (c *chainLensReader[T]) FilesNum() int {
 }
 
 func (c *chainLensReader[T]) Seek(ctx context.Context, blockNum uint64) error {
-	// TODO: INCOMPLETE
-	return c.reader.Seek(ctx, blockNum)
+	// seek the iterator to the closes block to the blockNum
+	iter := c.filter.Eval()
+	currBlock, _ := iter.Next()
+	currDist := math.Abs(float64(blockNum - currBlock))
+	for iter.HasNext() {
+		nextBlock, _ := iter.Peek()
+		nextDist := math.Abs(float64(blockNum - nextBlock))
+		if nextDist > currDist {
+			break
+		}
+		// since next is closer, move to next
+		iter.Next()
+		currDist = nextDist
+	}
+
+	// set the iterator to the desired block num
+	c.iterator = iter
+	return nil
 }
 
 func (c *chainLensReader[T]) BlockNum() uint64 {
-	// TODO: INCOMPLETE
-	return c.reader.BlockNum()
+	return c.lastBlockNum
 }
 
 func (c *chainLensReader[T]) Read(ctx context.Context) (Block[T], error) {
@@ -67,6 +84,7 @@ func (c *chainLensReader[T]) Read(ctx context.Context) (Block[T], error) {
 		block.Data = newData.Interface().(T)
 	}
 
+	c.lastBlockNum = blockNum
 	return block, nil
 }
 

@@ -364,7 +364,7 @@ func (fi *FileIndex) Load(ctx context.Context) error {
 }
 
 func (fi *FileIndex) Save(ctx context.Context) error {
-	// create file index file
+	// create file Index file
 	indexFile, err := fi.fs.Create(ctx, FileIndexFileName, nil)
 	if err != nil {
 		return err
@@ -394,16 +394,16 @@ func (fi *FileIndex) Save(ctx context.Context) error {
 }
 
 func (fi *FileIndex) loadFiles(ctx context.Context) error {
-	// check if file index exists, if not migrate all existing ethwal files to the file index
+	// check if file Index exists, if not migrate all existing ethwal files to the file Index
 	indexFile, openErr := fi.fs.Open(context.Background(), FileIndexFileName, nil)
 	if openErr != nil && strings.Contains(openErr.Error(), "not exist") {
-		// migrate all existing ethwal files to the file index
+		// migrate all existing ethwal files to the file Index
 		migrationErr := migrateToFileIndex(ctx, fi.fs)
 		if migrationErr != nil {
 			return migrationErr
 		}
 
-		// open file index
+		// open file Index
 		indexFile, openErr = fi.fs.Open(context.Background(), FileIndexFileName, nil)
 		if openErr != nil && strings.Contains(openErr.Error(), "not exist") {
 			// no files exist, so we return an empty list
@@ -454,7 +454,7 @@ func (fi *FileIndex) readFiles(ctx context.Context, rdr io.Reader) ([]*File, err
 	return files, nil
 }
 
-// migrateToFileIndex migrates all ethwal files to the file index
+// migrateToFileIndex migrates all ethwal files to the file Index
 func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	wlk, ok := fs.(storage.Walker)
 	if !ok {

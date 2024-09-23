@@ -6,33 +6,36 @@ import (
 	"github.com/0xsequence/ethwal/storage"
 )
 
+const indexDir = ".idx"
+
 type writerWithFilter[T any] struct {
 	writer  Writer[T]
 	indexes map[IndexName]Index[T]
+	fs      storage.FS
 }
 
 var _ Writer[any] = (*writerWithFilter[any])(nil)
 
-func NewWriterWithIndexBuilder[T any](writer Writer[T], indexes Indexes[T], fs storage.FS) (Writer[T], error) {
-	indexMap := make(map[IndexName]Index[T])
-	for name, indexFunc := range indexes {
-		idx := &index[T]{
-			name:      name.Normalize(),
-			indexFunc: indexFunc,
-			fs:        fs,
-		}
-		indexMap[name] = idx
-	}
+func NewWriterWithIndexBuilder[T any](writer Writer[T], indexes Indexes[T]) (Writer[T], error) {
+	return &writerWithFilter[T]{indexes: indexes, writer: writer, fs: storage.NewPrefixWrapper(writer.FileSystem(), indexDir)}, nil
+}
 
-	return &writerWithFilter[T]{indexes: indexMap, writer: writer}, nil
+func (c *writerWithFilter[T]) FileSystem() storage.FS {
+	return c.fs
 }
 
 func (c *writerWithFilter[T]) Write(ctx context.Context, block Block[T]) error {
-	err := c.writer.Write(ctx, block)
+	// update indexes first (idempotent)
+	err := c.store(ctx, block)
 	if err != nil {
 		return err
 	}
-	c.store(ctx, block)
+
+	// write block
+	err = c.writer.Write(ctx, block)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -48,8 +51,21 @@ func (c *writerWithFilter[T]) RollFile(ctx context.Context) error {
 	return c.writer.RollFile(ctx)
 }
 
-func (c *writerWithFilter[T]) store(ctx context.Context, block Block[T]) {
+func (c *writerWithFilter[T]) store(ctx context.Context, block Block[T]) error {
 	for _, index := range c.indexes {
-		index.Store(ctx, block)
+		bmUpdate, err := index.Index(block)
+		if err != nil {
+			return err
+		}
+
+		if bmUpdate == nil {
+			continue
+		}
+
+		err = index.Store(ctx, c.fs, bmUpdate)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }

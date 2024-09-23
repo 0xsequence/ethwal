@@ -13,6 +13,7 @@ import (
 )
 
 type Writer[T any] interface {
+	FileSystem() storage.FS
 	Write(ctx context.Context, b Block[T]) error
 	BlockNum() uint64
 	RollFile(ctx context.Context) error
@@ -62,16 +63,16 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	// mount FS with dataset path prefix
 	fs := storage.NewPrefixWrapper(opt.FileSystem, datasetPath)
 
-	// create file index
+	// create file Index
 	fileIndex := NewFileIndex(fs)
 
-	// load file index
+	// load file Index
 	ctx, cancel := context.WithTimeout(context.Background(), loadIndexFileTimeout)
 	defer cancel()
 
 	err := fileIndex.Load(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load file index: %w", err)
+		return nil, fmt.Errorf("failed to load file Index: %w", err)
 	}
 
 	var lastBlockNum uint64
@@ -90,6 +91,10 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		fileIndex:     fileIndex,
 		buffer:        bytes.NewBuffer(make([]byte, 0, defaultFileSize)),
 	}, nil
+}
+
+func (w *writer[T]) FileSystem() storage.FS {
+	return w.fs
 }
 
 func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
@@ -185,13 +190,13 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 	// create new file
 	newFile := &File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
 
-	// add file to file index
+	// add file to file Index
 	err := w.fileIndex.AddFile(newFile)
 	if err != nil {
 		return err
 	}
 
-	// save file index
+	// save file Index
 	err = w.fileIndex.Save(ctx)
 	if err != nil {
 		return err
@@ -214,7 +219,7 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 		return err
 	}
 
-	// wait for both file and file index to be saved
+	// wait for both file and file Index to be saved
 	// todo: save in background
 	return nil
 }

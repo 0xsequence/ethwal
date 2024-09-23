@@ -12,7 +12,6 @@ import (
 )
 
 func Test_FilterWriter(t *testing.T) {
-	// fs.Create(context.Background(), "lmao_testing", nil)
 	reader, err := NewReader[[]types.Log](Options{
 		Dataset: Dataset{
 			Path: "../indexer-data/ethwal/137/ethlog/v1/",
@@ -24,7 +23,7 @@ func Test_FilterWriter(t *testing.T) {
 
 	writer, err := NewWriter[[]types.Log](Options{
 		Dataset: Dataset{
-			Path: "../indexer-data/ethwal/137/ethlog/v8/",
+			Path: "../indexer-data/ethwal/137/ethlog/v2/",
 		},
 		NewDecompressor: NewZSTDDecompressor,
 		NewDecoder:      NewCBORDecoder,
@@ -71,9 +70,6 @@ func Test_FilterWriter(t *testing.T) {
 			return
 		}),
 	}
-
-	// filterBuilder, err := NewIndexesFilterBuilder(indexes, fs)
-	// require.NoError(t, err)
 
 	chainLensWriter, err := NewWriterWithIndexBuilder(writer, indexes)
 	require.NoError(t, err)

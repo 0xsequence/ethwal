@@ -32,30 +32,30 @@ func (i IndexCompoundID) Split() (uint64, uint16) {
 
 type IndexName string
 
+type IndexValue string
+
 func (i IndexName) Normalize() IndexName {
 	return IndexName(strings.ToLower(string(i)))
 }
 
-type Indexes[T any] map[IndexName]IndexFunction[T]
+type Indexes[T any] map[IndexName]Index[T]
 
-type Index[T any] interface {
-	Fetch(ctx context.Context, key string) (*roaring64.Bitmap, error)
-	Store(ctx context.Context, block Block[T]) error
-	Name() IndexName
-}
-
-type index[T any] struct {
+type Index[T any] struct {
 	name      IndexName
 	indexFunc IndexFunction[T]
-	fs        storage.FS
 }
 
-var _ Index[any] = (*index[any])(nil)
+func NewIndex[T any](name IndexName, indexFunc IndexFunction[T]) Index[T] {
+	return Index[T]{
+		name:      name.Normalize(),
+		indexFunc: indexFunc,
+	}
+}
 
-func (i *index[T]) Fetch(ctx context.Context, indexValue string) (*roaring64.Bitmap, error) {
-	file, err := NewIndexFile(i.fs, i.name, indexValue)
+func (i *Index[T]) Fetch(ctx context.Context, fs storage.FS, indexValue IndexValue) (*roaring64.Bitmap, error) {
+	file, err := NewIndexFile(fs, i.name, indexValue)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open index file: %w", err)
+		return nil, fmt.Errorf("failed to open Index file: %w", err)
 	}
 	bmap, err := file.Read(ctx)
 	if err != nil {
@@ -65,13 +65,13 @@ func (i *index[T]) Fetch(ctx context.Context, indexValue string) (*roaring64.Bit
 	return bmap, nil
 }
 
-func (i *index[T]) Store(ctx context.Context, block Block[T]) error {
+func (i *Index[T]) Index(block Block[T]) (map[IndexValue]*roaring64.Bitmap, error) {
 	toIndex, indexValues, indexPositions, err := i.indexFunc(block)
 	if err != nil {
-		return fmt.Errorf("failed to index block: %w", err)
+		return nil, fmt.Errorf("failed to Index block: %w", err)
 	}
 	if !toIndex {
-		return nil
+		return map[IndexValue]*roaring64.Bitmap{}, nil
 	}
 
 	indexValueMap := make(map[string][]IndexCompoundID)
@@ -82,18 +82,35 @@ func (i *index[T]) Store(ctx context.Context, block Block[T]) error {
 		indexValueMap[indexValue] = append(indexValueMap[indexValue], NewIndexCompoundID(block.Number, indexPositions[i]))
 	}
 
+	indexValueBitmapMap := make(map[IndexValue]*roaring64.Bitmap)
 	for indexValue, indexIDs := range indexValueMap {
-		file, err := NewIndexFile(i.fs, i.name, indexValue)
-		if err != nil {
-			return fmt.Errorf("failed to open or create index file: %w", err)
+		bm, ok := indexValueBitmapMap[IndexValue(indexValue)]
+		if !ok {
+			bm = roaring64.New()
+			indexValueBitmapMap[IndexValue(indexValue)] = bm
 		}
+
+		for _, indexID := range indexIDs {
+			bm.Add(uint64(indexID))
+		}
+	}
+	return indexValueBitmapMap, nil
+}
+
+func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexValuesBitmapsMap map[IndexValue]*roaring64.Bitmap) error {
+	for indexValue, bmUpdate := range indexValuesBitmapsMap {
+		file, err := NewIndexFile(fs, i.name, indexValue)
+		if err != nil {
+			return fmt.Errorf("failed to open or create Index file: %w", err)
+		}
+
 		bmap, err := file.Read(ctx)
 		if err != nil {
 			return err
 		}
-		for _, indexID := range indexIDs {
-			bmap.Add(uint64(indexID))
-		}
+
+		bmap.Or(bmUpdate)
+
 		err = file.Write(ctx, bmap)
 		if err != nil {
 			return err
@@ -103,7 +120,7 @@ func (i *index[T]) Store(ctx context.Context, block Block[T]) error {
 	return nil
 }
 
-func (i *index[T]) Name() IndexName {
+func (i *Index[T]) Name() IndexName {
 	return i.name
 }
 

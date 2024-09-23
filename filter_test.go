@@ -12,7 +12,6 @@ import (
 )
 
 func Test_FilterWriter(t *testing.T) {
-	fs := local.NewLocalFS("./indexes/")
 	// fs.Create(context.Background(), "lmao_testing", nil)
 	reader, err := NewReader[[]types.Log](Options{
 		Dataset: Dataset{
@@ -34,7 +33,7 @@ func Test_FilterWriter(t *testing.T) {
 	spongeboiIndexValues := map[string]struct{}{}
 	transferWethIndexValues := map[string]struct{}{}
 	indexes := Indexes[[]types.Log]{
-		"spongeboi_erc_20_transfers_idx": func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
+		"spongeboi_erc_20_transfers_idx": NewIndex[[]types.Log]("spongeboi_erc_20_transfers_idx", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
 			pos = []uint16{}
 			toIndex = false
 			indexValues = []string{}
@@ -44,7 +43,7 @@ func Test_FilterWriter(t *testing.T) {
 				if len(log.Topics) == 3 && log.Topics[0].String() == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" &&
 					(log.Topics[1].String() == "0x000000000000000000000000d4bbf5d234cc95441a8af0a317d8874ee425e74d" || log.Topics[2].String() == "0x000000000000000000000000d4bbf5d234cc95441a8af0a317d8874ee425e74d") {
 					toIndex = true
-					indexValue := string(log.Topics[0].Hex())
+					indexValue := log.Topics[0].Hex()
 					indexValues = append(indexValues, indexValue)
 					pos = append(pos, uint16(i))
 					spongeboiIndexValues[indexValue] = struct{}{}
@@ -52,8 +51,8 @@ func Test_FilterWriter(t *testing.T) {
 				}
 			}
 			return
-		},
-		"transfer_weth": func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
+		}),
+		"transfer_weth": NewIndex[[]types.Log]("transfer_weth", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
 			pos = []uint16{}
 			toIndex = false
 			indexValues = []string{}
@@ -70,13 +69,13 @@ func Test_FilterWriter(t *testing.T) {
 				}
 			}
 			return
-		},
+		}),
 	}
 
 	// filterBuilder, err := NewIndexesFilterBuilder(indexes, fs)
 	// require.NoError(t, err)
 
-	chainLensWriter, err := NewWriterWithIndexBuilder(writer, indexes, fs)
+	chainLensWriter, err := NewWriterWithIndexBuilder(writer, indexes)
 	require.NoError(t, err)
 
 	for {
@@ -111,12 +110,12 @@ func Test_Filter(t *testing.T) {
 	// })
 	// require.NoError(t, err)
 	indexes := Indexes[[]types.Log]{
-		"spongeboi_erc_20_transfers_idx": func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
+		"spongeboi_erc_20_transfers_idx": NewIndex[[]types.Log]("spongeboi_erc_20_transfers_idx", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
 			return
-		},
-		"transfer_weth": func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
+		}),
+		"transfer_weth": NewIndex[[]types.Log]("transfer_weth", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
 			return
-		},
+		}),
 	}
 	fb, err := NewIndexesFilterBuilder(indexes, fs)
 	require.NoError(t, err)

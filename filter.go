@@ -25,30 +25,23 @@ type FilterBuilder interface {
 	Eq(index string, key string) Filter
 }
 
+type filterBuilder[T any] struct {
+	indexes map[IndexName]Index[T]
+	fs      storage.FS
+}
+
 func NewIndexesFilterBuilder[T any](indexes Indexes[T], fs storage.FS) (FilterBuilder, error) {
-	indexMap := make(map[IndexName]Index[T])
-	for name, indexFunc := range indexes {
-		idx := &index[T]{
-			name:      name.Normalize(),
-			indexFunc: indexFunc,
-			fs:        fs,
-		}
-		indexMap[name] = idx
-	}
-	return &chainLensFilterBuilder[T]{
-		indexes: indexMap,
+	return &filterBuilder[T]{
+		indexes: indexes,
+		fs:      fs,
 	}, nil
 }
 
-type chainLensFilterBuilder[T any] struct {
-	indexes map[IndexName]Index[T]
-}
-
-type chainLensFilter struct {
+type filter struct {
 	resultSet *roaring64.Bitmap
 }
 
-func (c *chainLensFilter) Eval() FilterIterator {
+func (c *filter) Eval() FilterIterator {
 	if c.resultSet == nil {
 		c.resultSet = roaring64.New()
 	}
@@ -56,7 +49,7 @@ func (c *chainLensFilter) Eval() FilterIterator {
 	return newFilterIterator(c.resultSet.Clone())
 }
 
-func (c *chainLensFilterBuilder[T]) And(filters ...Filter) Filter {
+func (c *filterBuilder[T]) And(filters ...Filter) Filter {
 	var bmap *roaring64.Bitmap
 	for _, filter := range filters {
 		if filter == nil {
@@ -74,12 +67,12 @@ func (c *chainLensFilterBuilder[T]) And(filters ...Filter) Filter {
 			bmap.And(iter.Bitmap())
 		}
 	}
-	return &chainLensFilter{
+	return &filter{
 		resultSet: bmap,
 	}
 }
 
-func (c *chainLensFilterBuilder[T]) Or(filters ...Filter) Filter {
+func (c *filterBuilder[T]) Or(filters ...Filter) Filter {
 	var bmap *roaring64.Bitmap
 	for _, filter := range filters {
 		if filter == nil {
@@ -96,13 +89,13 @@ func (c *chainLensFilterBuilder[T]) Or(filters ...Filter) Filter {
 		}
 	}
 
-	return &chainLensFilter{
+	return &filter{
 		resultSet: bmap,
 	}
 }
 
-func (c *chainLensFilterBuilder[T]) Eq(index string, key string) Filter {
-	// fetch the index and store it in the result set
+func (c *filterBuilder[T]) Eq(index string, key string) Filter {
+	// fetch the Index and store it in the result set
 	index_ := IndexName(index).Normalize()
 	idx, ok := c.indexes[index_]
 	if !ok {
@@ -110,12 +103,13 @@ func (c *chainLensFilterBuilder[T]) Eq(index string, key string) Filter {
 	}
 
 	// TODO: what should the context be?
-	bitmap, err := idx.Fetch(context.Background(), key)
+	// TODO: lazy... do that on Eval?
+	bitmap, err := idx.Fetch(context.Background(), c.fs, IndexValue(key))
 	if err != nil {
 		return &noOpFilter{}
 	}
 
-	return &chainLensFilter{
+	return &filter{
 		resultSet: bitmap,
 	}
 }

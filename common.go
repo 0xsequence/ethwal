@@ -153,18 +153,7 @@ func (f *File) Create(ctx context.Context, fs storage.FS) (io.WriteCloser, error
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	filePath := f.Path()
-	if _, ok := fs.(*local.LocalFS); ok {
-		var err error
-		dirPath := path.Dir(filePath)
-		if _, err = os.Stat(dirPath); os.IsNotExist(err) {
-			err = os.MkdirAll(dirPath, 0755)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to create file directory")
-		}
-	}
-	return fs.Create(ctx, filePath, nil)
+	return fs.Create(ctx, f.Path(), nil)
 }
 
 func (f *File) Open(ctx context.Context, fs storage.FS) (io.ReadCloser, error) {

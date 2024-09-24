@@ -3,6 +3,7 @@ package ethwal
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
@@ -28,8 +29,11 @@ func (i *IndexFile) Read(ctx context.Context) (*roaring64.Bitmap, error) {
 		return roaring64.New(), nil
 	}
 	defer file.Close()
-	var buf []byte = make([]byte, file.Size)
-	_, err = file.Read(buf)
+
+	decomp := NewZSTDDecompressor(file)
+	defer decomp.Close()
+
+	buf, err := io.ReadAll(decomp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read Index file: %w", err)
 	}
@@ -48,6 +52,10 @@ func (i *IndexFile) Write(ctx context.Context, bmap *roaring64.Bitmap) error {
 		return fmt.Errorf("failed to open Index file: %w", err)
 	}
 	defer file.Close()
-	_, err = bmap.WriteTo(file)
+
+	comp := NewZSTDCompressor(file)
+	defer comp.Close()
+
+	_, err = bmap.WriteTo(comp)
 	return err
 }

@@ -3,6 +3,7 @@ package ethwal
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"strings"
 
@@ -125,18 +126,12 @@ func (i *Index[T]) Name() IndexName {
 }
 
 func indexPath(index string, indexValue string) string {
-	h := sha256.New()
-	h.Write([]byte(indexValue))
-	hashed := h.Sum(nil)
-	hashString := fmt.Sprintf("%x", hashed)
-	dividedLen := int(len(hashString) / 4)
-	indexValues := make([]string, 4)
-	for i := 0; i < 4; i++ {
-		if i == 3 {
-			indexValues[i] = hashString[i*dividedLen:]
-			continue
-		}
-		indexValues[i] = hashString[i*dividedLen : (i+1)*dividedLen]
-	}
-	return fmt.Sprintf("%s/%s/%s/%s/%s", index, indexValues[0], indexValues[1], indexValues[2], indexValues[3])
+	hash := sha256.Sum224([]byte(indexValue))
+	return fmt.Sprintf("%s/%06d/%06d/%06d/%s",
+		index,
+		binary.BigEndian.Uint64(hash[0:8])%NumberOfDirectoriesPerLevel,   // level0
+		binary.BigEndian.Uint64(hash[8:16])%NumberOfDirectoriesPerLevel,  // level1
+		binary.BigEndian.Uint64(hash[16:24])%NumberOfDirectoriesPerLevel, // level2
+		fmt.Sprintf("%s.idx", indexValue),                                // filename
+	)
 }

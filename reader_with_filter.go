@@ -58,12 +58,17 @@ func (c *chainLensReader[T]) Read(ctx context.Context) (Block[T], error) {
 		return Block[T]{}, io.EOF
 	}
 
-	indexes := make([]uint16, 0)
-	blockNum, i := c.iterator.Next()
-	indexes = append(indexes, i)
-	for b, _ := c.iterator.Peek(); c.iterator.HasNext() && b == blockNum; {
-		_, i = c.iterator.Next()
-		indexes = append(indexes, i)
+	dataIndexes := make([]uint16, 0)
+	blockNum, dataIndex := c.iterator.Next()
+	dataIndexes = append(dataIndexes, dataIndex)
+	for b, dataIndex := c.iterator.Peek(); c.iterator.HasNext() && b == blockNum; {
+		b, dataIndex = c.iterator.Peek()
+		if b != blockNum {
+			break
+		}
+
+		b, dataIndex = c.iterator.Next()
+		dataIndexes = append(dataIndexes, dataIndex)
 	}
 
 	err := c.reader.Seek(ctx, blockNum)
@@ -78,8 +83,8 @@ func (c *chainLensReader[T]) Read(ctx context.Context) (Block[T], error) {
 
 	if dType := reflect.TypeOf(block.Data); dType.Kind() == reflect.Slice || dType.Kind() == reflect.Array {
 		newData := reflect.Indirect(reflect.New(dType))
-		for _, i := range indexes {
-			newData = reflect.Append(newData, reflect.ValueOf(block.Data).Index(int(i)))
+		for _, dataIndex := range dataIndexes {
+			newData = reflect.Append(newData, reflect.ValueOf(block.Data).Index(int(dataIndex)))
 		}
 		block.Data = newData.Interface().(T)
 	}

@@ -1,6 +1,10 @@
 package ethwal
 
-import "context"
+import (
+	"context"
+
+	"github.com/0xsequence/ethwal/storage"
+)
 
 type noGapWriter[T any] struct {
 	w Writer[T]
@@ -10,6 +14,10 @@ type noGapWriter[T any] struct {
 
 func NewWriterNoGap[T any](w Writer[T]) Writer[T] {
 	return &noGapWriter[T]{w: w}
+}
+
+func (n *noGapWriter[T]) FileSystem() storage.FS {
+	return n.w.FileSystem()
 }
 
 func (n *noGapWriter[T]) Write(ctx context.Context, b Block[T]) error {

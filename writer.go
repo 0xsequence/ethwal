@@ -18,6 +18,8 @@ type Writer[T any] interface {
 	BlockNum() uint64
 	RollFile(ctx context.Context) error
 	Close(ctx context.Context) error
+	Options() Options
+	SetOptions(opt Options)
 }
 
 type writer[T any] struct {
@@ -160,6 +162,14 @@ func (w *writer[T]) Close(ctx context.Context) error {
 	return nil
 }
 
+func (w *writer[T]) Options() Options {
+	return w.options
+}
+
+func (w *writer[T]) SetOptions(opt Options) {
+	w.options = opt
+}
+
 func (w *writer[T]) isReadyToWrite() bool {
 	return w.encoder != nil
 }
@@ -189,6 +199,7 @@ func (w *writer[T]) rollFile(ctx context.Context) error {
 func (w *writer[T]) writeFile(ctx context.Context) error {
 	// create new file
 	newFile := &File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
+	w.options.FileRollPolicy.onFlush(ctx)
 
 	// add file to file Index
 	err := w.fileIndex.AddFile(newFile)

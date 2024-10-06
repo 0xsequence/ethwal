@@ -54,3 +54,11 @@ func (n *noGapWriter[T]) BlockNum() uint64 {
 func (n *noGapWriter[T]) Close(ctx context.Context) error {
 	return n.w.Close(ctx)
 }
+
+func (n *noGapWriter[T]) Options() Options {
+	return n.w.Options()
+}
+
+func (n *noGapWriter[T]) SetOptions(opts Options) {
+	n.w.SetOptions(opts)
+}

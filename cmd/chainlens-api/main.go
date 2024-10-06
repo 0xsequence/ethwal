@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -21,100 +22,101 @@ type LogLocation struct {
 
 func main() {
 	var indexes = ethwal.Indexes[[]types.Log]{
-		ethwal.IndexName("hasData").Normalize(): ethwal.NewIndex("hasData", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValues []string, positions []uint16, err error) {
+		ethwal.IndexName("hasData").Normalize(): ethwal.NewIndex("hasData", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			if len(block.Data) == 0 {
 				toIndex = false
 				return
 			}
 
 			toIndex = true
-			indexValues = []string{"true"}
-			positions = []uint16{0} // todo: magic number needed for all
-			return
-		}),
-		ethwal.IndexName("contractAddress").Normalize(): ethwal.NewIndex("contractAddress", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValues []string, positions []uint16, err error) {
-			toIndex = true
-			positions = make([]uint16, 0, len(block.Data))
-			indexValues = make([]string, 0, len(block.Data))
-
-			for index, log := range block.Data {
-				indexValues = append(indexValues, strings.ToLower(log.Address.Hex()))
-				positions = append(positions, uint16(index))
+			positions := []uint16{math.MaxUint16} // todo: magic number needed for all
+			indexValueMap = map[string][]uint16{
+				"true": positions,
 			}
 			return
 		}),
-		ethwal.IndexName("topic0").Normalize(): ethwal.NewIndex("topic0", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValues []string, positions []uint16, err error) {
+		ethwal.IndexName("contractAddress").Normalize(): ethwal.NewIndex("contractAddress", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			toIndex = true
-			positions = make([]uint16, 0, len(block.Data))
-			indexValues = make([]string, 0, len(block.Data))
-
+			indexValueMap = make(map[string][]uint16)
+			for index, log := range block.Data {
+				if indexValueMap[strings.ToLower(log.Address.Hex())] == nil {
+					indexValueMap[strings.ToLower(log.Address.Hex())] = make([]uint16, 0)
+				}
+				indexValueMap[strings.ToLower(log.Address.Hex())] = append(indexValueMap[strings.ToLower(log.Address.Hex())], uint16(index))
+			}
+			return
+		}),
+		ethwal.IndexName("topic0").Normalize(): ethwal.NewIndex("topic0", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+			toIndex = true
+			indexValueMap = make(map[string][]uint16)
 			for index, log := range block.Data {
 				if len(log.Topics) < 1 || log.Topics[0].Cmp(common.Hash{}) == 0 {
 					continue
 				}
-
-				indexValues = append(indexValues, strings.ToLower(log.Topics[0].Hex()))
-				positions = append(positions, uint16(index))
+				if indexValueMap[strings.ToLower(log.Topics[0].Hex())] == nil {
+					indexValueMap[strings.ToLower(log.Topics[0].Hex())] = make([]uint16, 0)
+				}
+				indexValueMap[strings.ToLower(log.Topics[0].Hex())] = append(indexValueMap[strings.ToLower(log.Topics[0].Hex())], uint16(index))
 			}
 
-			if len(indexValues) == 0 {
+			if len(indexValueMap) == 0 {
 				toIndex = false
 			}
 			return
 		}),
-		ethwal.IndexName("topic1").Normalize(): ethwal.NewIndex("topic1", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValues []string, positions []uint16, err error) {
+		ethwal.IndexName("topic1").Normalize(): ethwal.NewIndex("topic1", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			toIndex = true
-			positions = make([]uint16, 0, len(block.Data))
-			indexValues = make([]string, 0, len(block.Data))
-
+			indexValueMap = make(map[string][]uint16)
 			for index, log := range block.Data {
 				if len(log.Topics) < 2 || log.Topics[1].Cmp(common.Hash{}) == 0 {
 					continue
 				}
-
-				indexValues = append(indexValues, strings.ToLower(log.Topics[1].Hex()))
-				positions = append(positions, uint16(index))
+				if indexValueMap[strings.ToLower(log.Topics[1].Hex())] == nil {
+					indexValueMap[strings.ToLower(log.Topics[1].Hex())] = make([]uint16, 0)
+				}
+				indexValueMap[strings.ToLower(log.Topics[1].Hex())] = append(indexValueMap[strings.ToLower(log.Topics[1].Hex())], uint16(index))
 			}
 
-			if len(indexValues) == 0 {
+			if len(indexValueMap) == 0 {
 				toIndex = false
 			}
 			return
 		}),
-		ethwal.IndexName("topic2").Normalize(): ethwal.NewIndex("topic2", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValues []string, positions []uint16, err error) {
+		ethwal.IndexName("topic2").Normalize(): ethwal.NewIndex("topic2", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			toIndex = true
-			positions = make([]uint16, 0, len(block.Data))
-			indexValues = make([]string, 0, len(block.Data))
-
+			indexValueMap = make(map[string][]uint16)
 			for index, log := range block.Data {
 				if len(log.Topics) < 3 || log.Topics[2].Cmp(common.Hash{}) == 0 {
 					continue
 				}
 
-				indexValues = append(indexValues, strings.ToLower(log.Topics[2].Hex()))
-				positions = append(positions, uint16(index))
+				if indexValueMap[strings.ToLower(log.Topics[2].Hex())] == nil {
+					indexValueMap[strings.ToLower(log.Topics[2].Hex())] = make([]uint16, 0)
+				}
+				indexValueMap[strings.ToLower(log.Topics[2].Hex())] = append(indexValueMap[strings.ToLower(log.Topics[2].Hex())], uint16(index))
 			}
 
-			if len(indexValues) == 0 {
+			if len(indexValueMap) == 0 {
 				toIndex = false
 			}
 			return
 		}),
-		ethwal.IndexName("topic3").Normalize(): ethwal.NewIndex("topic3", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValues []string, positions []uint16, err error) {
+		ethwal.IndexName("topic3").Normalize(): ethwal.NewIndex("topic3", func(block ethwal.Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			toIndex = true
-			positions = make([]uint16, 0, len(block.Data))
-			indexValues = make([]string, 0, len(block.Data))
+			indexValueMap = make(map[string][]uint16)
 
 			for index, log := range block.Data {
 				if len(log.Topics) < 4 || log.Topics[3].Cmp(common.Hash{}) == 0 {
 					continue
 				}
 
-				indexValues = append(indexValues, strings.ToLower(log.Topics[3].Hex()))
-				positions = append(positions, uint16(index))
+				if indexValueMap[strings.ToLower(log.Topics[3].Hex())] == nil {
+					indexValueMap[strings.ToLower(log.Topics[3].Hex())] = make([]uint16, 0)
+				}
+				indexValueMap[strings.ToLower(log.Topics[3].Hex())] = append(indexValueMap[strings.ToLower(log.Topics[3].Hex())], uint16(index))
 			}
 
-			if len(indexValues) == 0 {
+			if len(indexValueMap) == 0 {
 				toIndex = false
 			}
 			return

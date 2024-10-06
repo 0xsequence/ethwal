@@ -11,7 +11,9 @@ import (
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 )
 
-type IndexFunction[T any] func(block Block[T]) (toIndex bool, indexValues []string, positions []uint16, err error)
+// client could also do -> to index all positions in a block indexValueMap[indexValue\ -> {maxUint16}
+// instead of appending all positions
+type IndexFunction[T any] func(block Block[T]) (toIndex bool, indexValueMap map[string][]uint16, err error)
 
 type IndexCompoundID uint64
 
@@ -67,7 +69,7 @@ func (i *Index[T]) Fetch(ctx context.Context, fs storage.FS, indexValue IndexVal
 }
 
 func (i *Index[T]) Index(block Block[T]) (map[IndexValue]*roaring64.Bitmap, error) {
-	toIndex, indexValues, indexPositions, err := i.indexFunc(block)
+	toIndex, indexValueMap, err := i.indexFunc(block)
 	if err != nil {
 		return nil, fmt.Errorf("failed to Index block: %w", err)
 	}
@@ -75,12 +77,14 @@ func (i *Index[T]) Index(block Block[T]) (map[IndexValue]*roaring64.Bitmap, erro
 		return map[IndexValue]*roaring64.Bitmap{}, nil
 	}
 
-	indexValueMap := make(map[string][]IndexCompoundID)
-	for i, indexValue := range indexValues {
+	indexValueCompoundMap := make(map[string][]IndexCompoundID)
+	for indexValue, positions := range indexValueMap {
 		if _, ok := indexValueMap[indexValue]; !ok {
-			indexValueMap[indexValue] = make([]IndexCompoundID, 0)
+			indexValueCompoundMap[indexValue] = make([]IndexCompoundID, 0)
 		}
-		indexValueMap[indexValue] = append(indexValueMap[indexValue], NewIndexCompoundID(block.Number, indexPositions[i]))
+		for _, pos := range positions {
+			indexValueCompoundMap[indexValue] = append(indexValueCompoundMap[indexValue], NewIndexCompoundID(block.Number, pos))
+		}
 	}
 
 	indexValueBitmapMap := make(map[IndexValue]*roaring64.Bitmap)

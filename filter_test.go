@@ -32,10 +32,9 @@ func Test_FilterWriter(t *testing.T) {
 	spongeboiIndexValues := map[string]struct{}{}
 	transferWethIndexValues := map[string]struct{}{}
 	indexes := Indexes[[]types.Log]{
-		"spongeboi_erc_20_transfers_idx": NewIndex[[]types.Log]("spongeboi_erc_20_transfers_idx", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
-			pos = []uint16{}
+		"spongeboi_erc_20_transfers_idx": NewIndex[[]types.Log]("spongeboi_erc_20_transfers_idx", func(block Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			toIndex = false
-			indexValues = []string{}
+			indexValueMap = map[string][]uint16{}
 			err = nil
 			for i, log := range block.Data {
 				// if log.Address.String() == addy.String() {
@@ -43,28 +42,30 @@ func Test_FilterWriter(t *testing.T) {
 					(log.Topics[1].String() == "0x000000000000000000000000d4bbf5d234cc95441a8af0a317d8874ee425e74d" || log.Topics[2].String() == "0x000000000000000000000000d4bbf5d234cc95441a8af0a317d8874ee425e74d") {
 					toIndex = true
 					indexValue := log.Topics[0].Hex()
-					indexValues = append(indexValues, indexValue)
-					pos = append(pos, uint16(i))
+					if _, ok := indexValueMap[indexValue]; !ok {
+						indexValueMap[indexValue] = []uint16{}
+					}
+					indexValueMap[indexValue] = append(indexValueMap[indexValue], uint16(i))
 					spongeboiIndexValues[indexValue] = struct{}{}
 					// fmt.Println("spongeboi indexValue", indexValue)
 				}
 			}
 			return
 		}),
-		"transfer_weth": NewIndex[[]types.Log]("transfer_weth", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
-			pos = []uint16{}
+		"transfer_weth": NewIndex[[]types.Log]("transfer_weth", func(block Block[[]types.Log]) (toIndex bool, indexValues map[string][]uint16, err error) {
 			toIndex = false
-			indexValues = []string{}
+			indexValues = map[string][]uint16{}
 			err = nil
 			addy := common.HexToAddress("0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619")
 			for i, log := range block.Data {
 				if log.Address.String() == addy.String() {
 					toIndex = true
 					indexValue := string(log.Topics[0].Hex())
-					pos = append(pos, uint16(i))
-					indexValues = append(indexValues, indexValue)
+					if _, ok := indexValues[indexValue]; !ok {
+						indexValues[indexValue] = []uint16{}
+					}
+					indexValues[indexValue] = append(indexValues[indexValue], uint16(i))
 					transferWethIndexValues[indexValue] = struct{}{}
-					// fmt.Println("transfer_weth indexValue", indexValue)
 				}
 			}
 			return
@@ -106,10 +107,10 @@ func Test_Filter(t *testing.T) {
 	// })
 	// require.NoError(t, err)
 	indexes := Indexes[[]types.Log]{
-		"spongeboi_erc_20_transfers_idx": NewIndex[[]types.Log]("spongeboi_erc_20_transfers_idx", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
+		"spongeboi_erc_20_transfers_idx": NewIndex[[]types.Log]("spongeboi_erc_20_transfers_idx", func(block Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			return
 		}),
-		"transfer_weth": NewIndex[[]types.Log]("transfer_weth", func(block Block[[]types.Log]) (toIndex bool, indexValues []string, pos []uint16, err error) {
+		"transfer_weth": NewIndex[[]types.Log]("transfer_weth", func(block Block[[]types.Log]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
 			return
 		}),
 	}

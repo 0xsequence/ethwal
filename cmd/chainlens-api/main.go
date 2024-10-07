@@ -29,7 +29,7 @@ func main() {
 			}
 
 			toIndex = true
-			positions := []uint16{math.MaxUint16} // todo: magic number needed for all
+			positions := []uint16{math.MaxUint16}
 			indexValueMap = map[string][]uint16{
 				"true": positions,
 			}

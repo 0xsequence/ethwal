@@ -88,7 +88,7 @@ func (i *Index[T]) Index(block Block[T]) (map[IndexValue]*roaring64.Bitmap, erro
 	}
 
 	indexValueBitmapMap := make(map[IndexValue]*roaring64.Bitmap)
-	for indexValue, indexIDs := range indexValueMap {
+	for indexValue, indexIDs := range indexValueCompoundMap {
 		bm, ok := indexValueBitmapMap[IndexValue(indexValue)]
 		if !ok {
 			bm = roaring64.New()

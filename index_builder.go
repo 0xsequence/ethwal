@@ -9,18 +9,21 @@ import (
 )
 
 type IndexBuilder[T any] struct {
-	mu        sync.Mutex
-	indexes   map[IndexName]Index[T]
-	indexMaps map[IndexName]map[IndexValue]*roaring64.Bitmap
-	fs        storage.FS
+	mu             sync.Mutex
+	indexes        map[IndexName]Index[T]
+	indexMaps      map[IndexName]map[IndexValue]*roaring64.Bitmap
+	indexMaxBlocks map[IndexName]uint64
+	fs             storage.FS
 }
 
 func NewIndexBuilder[T any](indexes Indexes[T], fs storage.FS) (*IndexBuilder[T], error) {
 	indexMaps := make(map[IndexName]map[IndexValue]*roaring64.Bitmap)
+	indexMaxBlocks := make(map[IndexName]uint64)
 	for _, index := range indexes {
 		indexMaps[index.name] = make(map[IndexValue]*roaring64.Bitmap)
+		indexMaxBlocks[index.name] = 0
 	}
-	return &IndexBuilder[T]{indexes: indexes, indexMaps: indexMaps, fs: fs}, nil
+	return &IndexBuilder[T]{indexes: indexes, indexMaps: indexMaps, indexMaxBlocks: indexMaxBlocks, fs: fs}, nil
 }
 
 func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
@@ -44,6 +47,11 @@ func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 				continue
 			}
 		}
+
+		if b.indexMaxBlocks[index.name] < block.Number {
+			b.indexMaxBlocks[index.name] = block.Number
+		}
+
 		b.mu.Unlock()
 	}
 
@@ -64,7 +72,7 @@ func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 			continue
 		}
 
-		err := idx.Store(ctx, b.fs, indexMap)
+		err := idx.Store(ctx, b.fs, indexMap, b.indexMaxBlocks[name])
 		if err != nil {
 			return err
 		}
@@ -72,8 +80,11 @@ func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 
 	// clear indexMaps
 	b.indexMaps = make(map[IndexName]map[IndexValue]*roaring64.Bitmap)
+	b.indexMaxBlocks = make(map[IndexName]uint64)
 	for _, index := range b.indexes {
 		b.indexMaps[index.name] = make(map[IndexValue]*roaring64.Bitmap)
+		b.indexMaxBlocks[index.name] = 0
 	}
+
 	return nil
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/0xsequence/ethwal/storage"
 )
 
-const indexDir = ".idx"
+const indexDir = ".idx/"
 
 type writerWithFilter[T any] struct {
 	writer       Writer[T]

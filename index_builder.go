@@ -28,7 +28,7 @@ func NewIndexBuilder[T any](indexes Indexes[T], fs storage.FS) (*IndexBuilder[T]
 
 func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 	for _, index := range b.indexes {
-		bmUpdate, err := index.Index(block)
+		bmUpdate, err := index.Index(ctx, b.fs, block)
 		if err != nil {
 			return err
 		}

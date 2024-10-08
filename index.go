@@ -72,7 +72,16 @@ func (i *Index[T]) Fetch(ctx context.Context, fs storage.FS, indexValue IndexVal
 	return bmap, nil
 }
 
-func (i *Index[T]) Index(block Block[T]) (map[IndexValue]*roaring64.Bitmap, error) {
+func (i *Index[T]) Index(ctx context.Context, fs storage.FS, block Block[T]) (map[IndexValue]*roaring64.Bitmap, error) {
+	numBlocksIndexed, err := i.NumBlocksIndexed(ctx, fs)
+	if err != nil {
+		return nil, fmt.Errorf("unexpected: failed to get number of blocks indexed: %w", err)
+	}
+
+	if block.Number <= numBlocksIndexed {
+		return nil, nil
+	}
+
 	toIndex, indexValueMap, err := i.indexFunc(block)
 	if err != nil {
 		return nil, fmt.Errorf("failed to Index block: %w", err)
@@ -107,6 +116,14 @@ func (i *Index[T]) Index(block Block[T]) (map[IndexValue]*roaring64.Bitmap, erro
 }
 
 func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexValuesBitmapsMap map[IndexValue]*roaring64.Bitmap, maxBlock uint64) error {
+	numBlocksIndexed, err := i.NumBlocksIndexed(ctx, fs)
+	if err != nil {
+		return fmt.Errorf("failed to get number of blocks indexed: %w", err)
+	}
+	if maxBlock <= numBlocksIndexed {
+		return nil
+	}
+
 	for indexValue, bmUpdate := range indexValuesBitmapsMap {
 		file, err := NewIndexFile(fs, i.name, indexValue)
 		if err != nil {
@@ -126,7 +143,7 @@ func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexValuesBitmapsM
 		}
 	}
 
-	err := i.storeNumBlocksIndexed(ctx, fs, maxBlock)
+	err = i.storeNumBlocksIndexed(ctx, fs, maxBlock)
 	if err != nil {
 		return fmt.Errorf("failed to store number of blocks indexed: %w", err)
 	}

@@ -2,7 +2,6 @@ package ethwal
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"testing"
 
@@ -50,14 +49,14 @@ func TestIntMixFiltering(t *testing.T) {
 	assert.Len(t, onlyEvenResults.Bitmap().ToArray(), 20)
 	for _, id := range onlyEvenResults.Bitmap().ToArray() {
 		block, _ := IndexCompoundID(id).Split()
-		assert.True(t, block < 20)
+		assert.True(t, block <= 20)
 	}
 
 	onlyOddResults := onlyOddFilter.Eval()
 	assert.Len(t, onlyOddResults.Bitmap().ToArray(), 20+20)
 	for _, id := range onlyOddResults.Bitmap().ToArray() {
 		block, _ := IndexCompoundID(id).Split()
-		assert.True(t, (block > 19 && block < 40) || (block > 49 && block < 70))
+		assert.True(t, (block > 20 && block < 41) || (block > 50 && block < 71))
 	}
 
 	numberAllResults := numberFilter.Eval()
@@ -65,7 +64,7 @@ func TestIntMixFiltering(t *testing.T) {
 	assert.Len(t, numberAllResults.Bitmap().ToArray(), 400)
 	for _, id := range numberAllResults.Bitmap().ToArray() {
 		block, _ := IndexCompoundID(id).Split()
-		assert.True(t, block > 49 && block < 70)
+		assert.True(t, block > 50 && block < 71)
 	}
 
 	allNumberAndOdd := f.And(numberFilter, oddFilter)
@@ -108,10 +107,8 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	assert.Equal(t, uint64(99), blockNum)
 
 	for _, i := range indexes {
-		fmt.Println(i.name)
 		i.numBlocksIndexed = nil
 		block, err := i.NumBlocksIndexed(context.Background(), fs)
-		fmt.Println(block)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(99), block)
 	}

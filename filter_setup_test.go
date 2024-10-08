@@ -55,7 +55,7 @@ func generateMixedIntBlocks() []Block[[]int] {
 	// 45-49 generate 5 blocks with no data
 	// 50-69 generate 20 blocks with random but repeating huge numbers
 
-	for i := 0; i < 20; i++ {
+	for i := 1; i <= 20; i++ {
 		blocks = append(blocks, Block[[]int]{
 			Hash:   common.BytesToHash([]byte{byte(i)}),
 			Number: uint64(i),
@@ -63,7 +63,7 @@ func generateMixedIntBlocks() []Block[[]int] {
 		})
 	}
 
-	for i := 20; i < 40; i++ {
+	for i := 21; i <= 40; i++ {
 		blocks = append(blocks, Block[[]int]{
 			Hash:   common.BytesToHash([]byte{byte(i)}),
 			Number: uint64(i),
@@ -71,7 +71,7 @@ func generateMixedIntBlocks() []Block[[]int] {
 		})
 	}
 
-	for i := 40; i < 45; i++ {
+	for i := 41; i <= 45; i++ {
 		blocks = append(blocks, Block[[]int]{
 			Hash:   common.BytesToHash([]byte{byte(i)}),
 			Number: uint64(i),
@@ -79,7 +79,7 @@ func generateMixedIntBlocks() []Block[[]int] {
 		})
 	}
 
-	for i := 45; i < 50; i++ {
+	for i := 46; i <= 50; i++ {
 		blocks = append(blocks, Block[[]int]{
 			Hash:   common.BytesToHash([]byte{byte(i)}),
 			Number: uint64(i),
@@ -98,7 +98,7 @@ func generateMixedIntBlocks() []Block[[]int] {
 		111,
 	}
 
-	for i := 50; i < 70; i++ {
+	for i := 51; i < 71; i++ {
 		data := []int{}
 		for j := i; j < i+20; j++ {
 			data = append(data, numbers[j%len(numbers)])

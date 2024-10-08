@@ -114,12 +114,33 @@ func generateMixedIntBlocks() []Block[[]int] {
 	return blocks
 }
 
+func generateIntBlocks() []Block[[]int] {
+	blocks := []Block[[]int]{}
+
+	for i := 0; i < 100; i++ {
+		blocks = append(blocks, Block[[]int]{
+			Hash:   common.BytesToHash([]byte{byte(i)}),
+			Number: uint64(i),
+			Data:   []int{i, i + 1},
+		})
+	}
+
+	return blocks
+}
+
 func generateMixedIntIndexes() Indexes[[]int] {
 	indexes := Indexes[[]int]{}
 	indexes["all"] = NewIndex[[]int]("all", indexBlock)
 	indexes["odd_even"] = NewIndex[[]int]("odd_even", indexOddEvenBlocks)
 	indexes["only_even"] = NewIndex[[]int]("only_even", indexOnlyEvenBlocks)
 	indexes["only_odd"] = NewIndex[[]int]("only_odd", indexOnlyOddBlocks)
+	return indexes
+}
+
+func generateIntIndexes() Indexes[[]int] {
+	indexes := Indexes[[]int]{}
+	indexes["all"] = NewIndex[[]int]("all", indexAll)
+	indexes["none"] = NewIndex[[]int]("none", indexNone)
 	return indexes
 }
 
@@ -204,4 +225,25 @@ func indexBlock(block Block[[]int]) (toIndex bool, indexValueMap map[string][]ui
 	}
 
 	return
+}
+
+func indexAll(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+	if len(block.Data) == 0 {
+		return false, nil, nil
+	}
+
+	toIndex = true
+	indexValueMap = make(map[string][]uint16)
+	for _, data := range block.Data {
+		dataStr := fmt.Sprintf("%d", data)
+		if _, ok := indexValueMap[dataStr]; !ok {
+			indexValueMap[dataStr] = []uint16{math.MaxUint16}
+		}
+	}
+
+	return
+}
+
+func indexNone(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+	return false, nil, nil
 }

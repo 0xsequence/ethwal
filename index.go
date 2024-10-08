@@ -125,6 +125,10 @@ func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexValuesBitmapsM
 	}
 
 	for indexValue, bmUpdate := range indexValuesBitmapsMap {
+		if bmUpdate.IsEmpty() {
+			continue
+		}
+
 		file, err := NewIndexFile(fs, i.name, indexValue)
 		if err != nil {
 			return fmt.Errorf("failed to open or create Index file: %w", err)
@@ -162,7 +166,8 @@ func (i *Index[T]) NumBlocksIndexed(ctx context.Context, fs storage.FS) (uint64,
 
 	file, err := fs.Open(ctx, indexBlocksIndexedPath(string(i.name)), nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to open Index file: %w", err)
+		// file doesn't exist
+		return 0, nil
 	}
 	defer file.Close()
 

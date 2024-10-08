@@ -1,6 +1,8 @@
 package ethwal
 
 import (
+	"context"
+	"fmt"
 	"math"
 	"testing"
 
@@ -69,4 +71,86 @@ func TestIntMixFiltering(t *testing.T) {
 	allNumberAndOdd := f.And(numberFilter, oddFilter)
 	allNumberOddResults := allNumberAndOdd.Eval()
 	assert.ElementsMatch(t, numberAllResults.Bitmap().ToArray(), allNumberOddResults.Bitmap().ToArray())
+}
+
+func TestFiltering(t *testing.T) {
+	_, indexes, fs, cleanup, err := setupMockData("int_filtering", generateIntIndexes, generateIntBlocks)
+	assert.NoError(t, err)
+	defer cleanup()
+
+	f, err := NewIndexesFilterBuilder(indexes, fs)
+	assert.NoError(t, err)
+	assert.NotNil(t, f)
+	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).Eval()
+	// result should contain block 1, 2, 3
+	assert.Len(t, result.Bitmap().ToArray(), 3)
+	block, _ := result.Next()
+	assert.Equal(t, uint64(1), block)
+	block, _ = result.Next()
+	assert.Equal(t, uint64(2), block)
+	block, _ = result.Next()
+	assert.Equal(t, uint64(3), block)
+
+	result = f.And(f.Eq("all", "1"), f.Eq("all", "2")).Eval()
+	// result should contain block 1
+	assert.Len(t, result.Bitmap().ToArray(), 1)
+	block, _ = result.Next()
+	assert.Equal(t, uint64(1), block)
+}
+
+func TestLowestIndexedBlockNum(t *testing.T) {
+	builder, indexes, fs, cleanup, err := setupMockData("int_indexing_num", generateIntIndexes, generateIntBlocks)
+	assert.NoError(t, err)
+	defer cleanup()
+
+	blockNum, err := builder.GetLowestIndexedBlockNum(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(99), blockNum)
+
+	for _, i := range indexes {
+		fmt.Println(i.name)
+		i.numBlocksIndexed = nil
+		block, err := i.NumBlocksIndexed(context.Background(), fs)
+		fmt.Println(block)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(99), block)
+	}
+
+	indexes = generateIntIndexes()
+	builder, err = NewIndexBuilder(indexes, fs)
+	assert.NoError(t, err)
+	lowestBlockIndexed, err := builder.GetLowestIndexedBlockNum(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(99), lowestBlockIndexed)
+
+	// add another filter...
+	// indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
+	// setup fresh objects
+	indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
+	builder, err = NewIndexBuilder(indexes, fs)
+	assert.NoError(t, err)
+	lowestBlockIndexed, err = builder.GetLowestIndexedBlockNum(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(0), lowestBlockIndexed)
+	blocks := generateIntBlocks()
+	for _, block := range blocks[:50] {
+		err = builder.Index(context.Background(), block)
+		assert.NoError(t, err)
+	}
+	err = builder.Flush(context.Background())
+	assert.NoError(t, err)
+	lowestBlockIndexed, err = builder.GetLowestIndexedBlockNum(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(49), lowestBlockIndexed)
+
+	// index more blocks
+	for _, block := range blocks[50:] {
+		err = builder.Index(context.Background(), block)
+		assert.NoError(t, err)
+	}
+	err = builder.Flush(context.Background())
+	assert.NoError(t, err)
+	lowestBlockIndexed, err = builder.GetLowestIndexedBlockNum(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(99), lowestBlockIndexed)
 }

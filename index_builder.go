@@ -34,6 +34,11 @@ func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 			return err
 		}
 
+		if b.indexMaxBlocks[index.name] < block.Number {
+			// note the max block number indexed
+			b.indexMaxBlocks[index.name] = block.Number
+		}
+
 		if bmUpdate == nil {
 			continue
 		}
@@ -47,10 +52,6 @@ func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 			if err != nil {
 				continue
 			}
-		}
-
-		if b.indexMaxBlocks[index.name] < block.Number {
-			b.indexMaxBlocks[index.name] = block.Number
 		}
 
 		b.mu.Unlock()
@@ -94,16 +95,20 @@ func (b *IndexBuilder[T]) GetLowestIndexedBlockNum(ctx context.Context) (uint64,
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	lowestBlockNum := uint64(0)
+	var lowestBlockNum *uint64
 	for _, index := range b.indexes {
 		numBlocksIndexed, err := index.NumBlocksIndexed(ctx, b.fs)
 		if err != nil {
 			return 0, fmt.Errorf("IndexBuilder.GetLowestIndexedBlockNum: failed to get number of blocks indexed: %w", err)
 		}
-		if lowestBlockNum == 0 || numBlocksIndexed < lowestBlockNum {
-			lowestBlockNum = numBlocksIndexed
+		if lowestBlockNum == nil || numBlocksIndexed < *lowestBlockNum {
+			lowestBlockNum = &numBlocksIndexed
 		}
 	}
 
-	return lowestBlockNum, nil
+	if lowestBlockNum == nil {
+		return 0, nil
+	}
+
+	return *lowestBlockNum, nil
 }

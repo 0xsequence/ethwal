@@ -2,6 +2,7 @@ package ethwal
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/0xsequence/ethwal/storage"
@@ -87,4 +88,22 @@ func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (b *IndexBuilder[T]) GetLowestIndexedBlockNum(ctx context.Context) (uint64, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	lowestBlockNum := uint64(0)
+	for _, index := range b.indexes {
+		numBlocksIndexed, err := index.NumBlocksIndexed(ctx, b.fs)
+		if err != nil {
+			return 0, fmt.Errorf("IndexBuilder.GetLowestIndexedBlockNum: failed to get number of blocks indexed: %w", err)
+		}
+		if lowestBlockNum == 0 || numBlocksIndexed < lowestBlockNum {
+			lowestBlockNum = numBlocksIndexed
+		}
+	}
+
+	return lowestBlockNum, nil
 }

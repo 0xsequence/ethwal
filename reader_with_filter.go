@@ -61,6 +61,7 @@ func (c *chainLensReader[T]) Read(ctx context.Context) (Block[T], error) {
 	dataIndexes := make([]uint16, 0)
 	blockNum, dataIndex := c.iterator.Next()
 	dataIndexes = append(dataIndexes, dataIndex)
+	indexAll := dataIndex == math.MaxUint16
 	for b, dataIndex := c.iterator.Peek(); c.iterator.HasNext() && b == blockNum; {
 		b, dataIndex = c.iterator.Peek()
 		if b != blockNum {
@@ -68,6 +69,9 @@ func (c *chainLensReader[T]) Read(ctx context.Context) (Block[T], error) {
 		}
 
 		b, dataIndex = c.iterator.Next()
+		if dataIndex == math.MaxUint16 {
+			indexAll = true
+		}
 		dataIndexes = append(dataIndexes, dataIndex)
 	}
 
@@ -81,7 +85,7 @@ func (c *chainLensReader[T]) Read(ctx context.Context) (Block[T], error) {
 		return Block[T]{}, err
 	}
 
-	if dType := reflect.TypeOf(block.Data); dType.Kind() == reflect.Slice || dType.Kind() == reflect.Array {
+	if dType := reflect.TypeOf(block.Data); (dType.Kind() == reflect.Slice || dType.Kind() == reflect.Array) && !indexAll {
 		newData := reflect.Indirect(reflect.New(dType))
 		for _, dataIndex := range dataIndexes {
 			newData = reflect.Append(newData, reflect.ValueOf(block.Data).Index(int(dataIndex)))

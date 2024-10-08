@@ -2,6 +2,7 @@ package ethwal
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/0xsequence/ethwal/storage"
@@ -9,26 +10,33 @@ import (
 )
 
 type IndexBuilder[T any] struct {
-	mu         sync.Mutex
-	indexes    map[IndexName]Index[T]
-	indexMaps  map[IndexName]map[IndexValue]*roaring64.Bitmap
-	fs         storage.FS
-	rollPolicy FileRollPolicy
+	mu             sync.Mutex
+	indexes        map[IndexName]Index[T]
+	indexMaps      map[IndexName]map[IndexValue]*roaring64.Bitmap
+	indexMaxBlocks map[IndexName]uint64
+	fs             storage.FS
 }
 
-func NewIndexBuilder[T any](indexes Indexes[T], fs storage.FS, rollPolicy FileRollPolicy) (*IndexBuilder[T], error) {
+func NewIndexBuilder[T any](indexes Indexes[T], fs storage.FS) (*IndexBuilder[T], error) {
 	indexMaps := make(map[IndexName]map[IndexValue]*roaring64.Bitmap)
+	indexMaxBlocks := make(map[IndexName]uint64)
 	for _, index := range indexes {
 		indexMaps[index.name] = make(map[IndexValue]*roaring64.Bitmap)
+		indexMaxBlocks[index.name] = 0
 	}
-	return &IndexBuilder[T]{indexes: indexes, indexMaps: indexMaps, fs: fs, rollPolicy: rollPolicy}, nil
+	return &IndexBuilder[T]{indexes: indexes, indexMaps: indexMaps, indexMaxBlocks: indexMaxBlocks, fs: fs}, nil
 }
 
 func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 	for _, index := range b.indexes {
-		bmUpdate, err := index.Index(block)
+		bmUpdate, err := index.Index(ctx, b.fs, block)
 		if err != nil {
 			return err
+		}
+
+		if b.indexMaxBlocks[index.name] < block.Number {
+			// note the max block number indexed
+			b.indexMaxBlocks[index.name] = block.Number
 		}
 
 		if bmUpdate == nil {
@@ -41,18 +49,12 @@ func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 				b.indexMaps[index.name][indexValue] = roaring64.New()
 			}
 			b.indexMaps[index.name][indexValue].Or(bm)
-			dataWritten, err := bm.MarshalBinary()
 			if err != nil {
 				continue
 			}
-			b.rollPolicy.onWrite(dataWritten)
 		}
-		b.mu.Unlock()
-	}
-	b.rollPolicy.onBlockProcessed(block.Number)
 
-	if b.rollPolicy.ShouldRoll() {
-		return b.Flush(ctx)
+		b.mu.Unlock()
 	}
 
 	return nil
@@ -65,7 +67,6 @@ func (b *IndexBuilder[T]) Close(ctx context.Context) error {
 func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	defer b.rollPolicy.Reset()
 
 	for name, indexMap := range b.indexMaps {
 		idx, ok := b.indexes[name]
@@ -73,7 +74,7 @@ func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 			continue
 		}
 
-		err := idx.Store(ctx, b.fs, indexMap)
+		err := idx.Store(ctx, b.fs, indexMap, b.indexMaxBlocks[name])
 		if err != nil {
 			return err
 		}
@@ -81,8 +82,33 @@ func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 
 	// clear indexMaps
 	b.indexMaps = make(map[IndexName]map[IndexValue]*roaring64.Bitmap)
+	b.indexMaxBlocks = make(map[IndexName]uint64)
 	for _, index := range b.indexes {
 		b.indexMaps[index.name] = make(map[IndexValue]*roaring64.Bitmap)
+		b.indexMaxBlocks[index.name] = 0
 	}
+
 	return nil
+}
+
+func (b *IndexBuilder[T]) GetLowestIndexedBlockNum(ctx context.Context) (uint64, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	var lowestBlockNum *uint64
+	for _, index := range b.indexes {
+		numBlocksIndexed, err := index.NumBlocksIndexed(ctx, b.fs)
+		if err != nil {
+			return 0, fmt.Errorf("IndexBuilder.GetLowestIndexedBlockNum: failed to get number of blocks indexed: %w", err)
+		}
+		if lowestBlockNum == nil || numBlocksIndexed < *lowestBlockNum {
+			lowestBlockNum = &numBlocksIndexed
+		}
+	}
+
+	if lowestBlockNum == nil {
+		return 0, nil
+	}
+
+	return *lowestBlockNum, nil
 }

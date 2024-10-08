@@ -2,12 +2,12 @@ package ethwal
 
 import (
 	"context"
+	"log"
 
 	"github.com/0xsequence/ethwal/storage"
 )
 
-const indexDir = ".idx"
-const defaultBlockRollInterval = 100
+const indexDir = ".idx/"
 
 type writerWithFilter[T any] struct {
 	writer       Writer[T]
@@ -19,7 +19,17 @@ var _ Writer[any] = (*writerWithFilter[any])(nil)
 
 func NewWriterWithIndexBuilder[T any](writer Writer[T], indexes Indexes[T]) (Writer[T], error) {
 	fs := storage.NewPrefixWrapper(writer.FileSystem(), indexDir)
-	indexBuilder, err := NewIndexBuilder[T](indexes, fs, NewLastBlockNumberRollPolicy(defaultBlockRollInterval))
+	indexBuilder, err := NewIndexBuilder[T](indexes, fs)
+	opts := writer.Options()
+	wrappedPolicy := NewWrappedRollPolicy(opts.FileRollPolicy, func(ctx context.Context) {
+		err := indexBuilder.Flush(ctx)
+		if err != nil {
+			log.Default().Println("failed to flush index", "err", err)
+		}
+	})
+	opts.FileRollPolicy = wrappedPolicy
+	writer.SetOptions(opts)
+
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +73,14 @@ func (c *writerWithFilter[T]) RollFile(ctx context.Context) error {
 		return err
 	}
 	return c.writer.RollFile(ctx)
+}
+
+func (c *writerWithFilter[T]) Options() Options {
+	return c.writer.Options()
+}
+
+func (c *writerWithFilter[T]) SetOptions(options Options) {
+	c.writer.SetOptions(options)
 }
 
 func (c *writerWithFilter[T]) store(ctx context.Context, block Block[T]) error {

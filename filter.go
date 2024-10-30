@@ -2,7 +2,6 @@ package ethwal
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
@@ -61,9 +60,7 @@ func (c *filterBuilder[T]) And(filters ...Filter) Filter {
 		iter := filter.Eval()
 		if bmap == nil {
 			bmap = iter.Bitmap().Clone()
-			fmt.Println("first bmap", bmap.GetCardinality())
 		} else {
-			fmt.Println("iter", iter.Bitmap().GetCardinality())
 			bmap.And(iter.Bitmap())
 		}
 	}

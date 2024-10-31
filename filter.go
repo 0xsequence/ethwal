@@ -89,7 +89,7 @@ func (c *filterBuilder[T]) Or(filters ...Filter) Filter {
 }
 
 func (c *filterBuilder[T]) Eq(index string, key string) Filter {
-	// fetch the IndexBlock and index it in the result set
+	// fetch the index file and include it in the result set
 	index_ := IndexName(index).Normalize()
 	idx, ok := c.indexes[index_]
 	if !ok {

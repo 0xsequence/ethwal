@@ -15,11 +15,11 @@ func TestMaxMagicCompoundID(t *testing.T) {
 }
 
 func TestIntMixFiltering(t *testing.T) {
-	_, indexes, fs, cleanup, err := setupMockData("int_mix", generateMixedIntIndexes, generateMixedIntBlocks)
+	_, indexes, _, cleanup, err := setupMockData("int_mix", generateMixedIntIndexes, generateMixedIntBlocks)
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewFilterBuilder(indexes, fs)
+	f, err := NewFilterBuilder(indexes)
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
 
@@ -73,11 +73,11 @@ func TestIntMixFiltering(t *testing.T) {
 }
 
 func TestFiltering(t *testing.T) {
-	_, indexes, fs, cleanup, err := setupMockData("int_filtering", generateIntIndexes, generateIntBlocks)
+	_, indexes, _, cleanup, err := setupMockData("int_filtering", generateIntIndexes, generateIntBlocks)
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewFilterBuilder(indexes, fs)
+	f, err := NewFilterBuilder(indexes)
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
 	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).Eval()
@@ -108,13 +108,13 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 
 	for _, i := range indexes {
 		i.numBlocksIndexed = nil
-		block, err := i.LastBlockNumIndexed(context.Background(), fs)
+		block, err := i.LastBlockNumIndexed(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(99), block)
 	}
 
-	indexes = generateIntIndexes()
-	builder, err = NewIndexBuilder(context.Background(), indexes, fs)
+	indexes = generateIntIndexes(fs)
+	builder, err = NewIndexBuilder(context.Background(), indexes)
 	assert.NoError(t, err)
 	lowestBlockIndexed, err := builder.LastIndexedBlockNum(context.Background())
 	assert.NoError(t, err)
@@ -123,8 +123,8 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	// add another filter...
 	// indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
 	// setup fresh objects
-	indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
-	builder, err = NewIndexBuilder(context.Background(), indexes, fs)
+	indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks, fs)
+	builder, err = NewIndexBuilder(context.Background(), indexes)
 	assert.NoError(t, err)
 	lowestBlockIndexed, err = builder.LastIndexedBlockNum(context.Background())
 	assert.NoError(t, err)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/0xsequence/ethwal/storage"
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 )
 
@@ -13,25 +12,24 @@ type IndexBuilder[T any] struct {
 	mu           sync.Mutex
 	indexes      map[IndexName]Index[T]
 	indexUpdates map[IndexName]*IndexUpdate
-	fs           storage.FS
 }
 
-func NewIndexBuilder[T any](ctx context.Context, indexes Indexes[T], fs storage.FS) (*IndexBuilder[T], error) {
+func NewIndexBuilder[T any](ctx context.Context, indexes Indexes[T]) (*IndexBuilder[T], error) {
 	indexMaps := make(map[IndexName]*IndexUpdate)
 	for _, index := range indexes {
-		lastBlockNum, err := index.LastBlockNumIndexed(ctx, fs)
+		lastBlockNum, err := index.LastBlockNumIndexed(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("IndexBuilder.NewIndexBuilder: failed to get last block number indexed for %s: %w", index.Name(), err)
 		}
 
 		indexMaps[index.name] = &IndexUpdate{Data: make(map[IndexedValue]*roaring64.Bitmap), LastBlockNum: lastBlockNum}
 	}
-	return &IndexBuilder[T]{indexes: indexes, indexUpdates: indexMaps, fs: fs}, nil
+	return &IndexBuilder[T]{indexes: indexes, indexUpdates: indexMaps}, nil
 }
 
 func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 	for _, index := range b.indexes {
-		bmUpdate, err := index.IndexBlock(ctx, b.fs, block)
+		bmUpdate, err := index.IndexBlock(ctx, block)
 		if err != nil {
 			return err
 		}
@@ -59,7 +57,7 @@ func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 			continue
 		}
 
-		err := idx.Store(ctx, b.fs, indexUpdate)
+		err := idx.Store(ctx, indexUpdate)
 		if err != nil {
 			return err
 		}
@@ -80,7 +78,7 @@ func (b *IndexBuilder[T]) LastIndexedBlockNum(ctx context.Context) (uint64, erro
 
 	var lowestBlockNum *uint64
 	for _, index := range b.indexes {
-		numBlocksIndexed, err := index.LastBlockNumIndexed(ctx, b.fs)
+		numBlocksIndexed, err := index.LastBlockNumIndexed(ctx)
 		if err != nil {
 			return 0, fmt.Errorf("IndexBuilder.LastIndexedBlockNum: failed to get number of blocks indexed: %w", err)
 		}

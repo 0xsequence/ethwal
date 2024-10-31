@@ -16,10 +16,10 @@ var (
 	indexTestDir = ".tmp/ethwal_index_test"
 )
 
-func setupMockData[T any](subDir string, indexGenerator func() Indexes[T], blockGenerator func() []Block[T]) (*IndexBuilder[T], Indexes[T], storage.FS, func(), error) {
+func setupMockData[T any](subDir string, indexGenerator func(fs storage.FS) Indexes[T], blockGenerator func() []Block[T]) (*IndexBuilder[T], Indexes[T], storage.FS, func(), error) {
 	fs := local.NewLocalFS(path.Join(indexTestDir, subDir))
-	indexes := indexGenerator()
-	indexBuilder, err := NewIndexBuilder(context.Background(), indexes, fs)
+	indexes := indexGenerator(fs)
+	indexBuilder, err := NewIndexBuilder(context.Background(), indexes)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -129,19 +129,19 @@ func generateIntBlocks() []Block[[]int] {
 	return blocks
 }
 
-func generateMixedIntIndexes() Indexes[[]int] {
+func generateMixedIntIndexes(fs storage.FS) Indexes[[]int] {
 	indexes := Indexes[[]int]{}
-	indexes["all"] = NewIndex[[]int]("all", indexBlock)
-	indexes["odd_even"] = NewIndex[[]int]("odd_even", indexOddEvenBlocks)
-	indexes["only_even"] = NewIndex[[]int]("only_even", indexOnlyEvenBlocks)
-	indexes["only_odd"] = NewIndex[[]int]("only_odd", indexOnlyOddBlocks)
+	indexes["all"] = NewIndex[[]int]("all", indexBlock, fs)
+	indexes["odd_even"] = NewIndex[[]int]("odd_even", indexOddEvenBlocks, fs)
+	indexes["only_even"] = NewIndex[[]int]("only_even", indexOnlyEvenBlocks, fs)
+	indexes["only_odd"] = NewIndex[[]int]("only_odd", indexOnlyOddBlocks, fs)
 	return indexes
 }
 
-func generateIntIndexes() Indexes[[]int] {
+func generateIntIndexes(fs storage.FS) Indexes[[]int] {
 	indexes := Indexes[[]int]{}
-	indexes["all"] = NewIndex[[]int]("all", indexAll)
-	indexes["none"] = NewIndex[[]int]("none", indexNone)
+	indexes["all"] = NewIndex[[]int]("all", indexAll, fs)
+	indexes["none"] = NewIndex[[]int]("none", indexNone, fs)
 	return indexes
 }
 

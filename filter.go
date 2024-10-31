@@ -3,7 +3,6 @@ package ethwal
 import (
 	"context"
 
-	"github.com/0xsequence/ethwal/storage"
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 )
 
@@ -26,13 +25,11 @@ type FilterBuilder interface {
 
 type filterBuilder[T any] struct {
 	indexes map[IndexName]Index[T]
-	fs      storage.FS
 }
 
-func NewFilterBuilder[T any](indexes Indexes[T], fs storage.FS) (FilterBuilder, error) {
+func NewFilterBuilder[T any](indexes Indexes[T]) (FilterBuilder, error) {
 	return &filterBuilder[T]{
 		indexes: indexes,
-		fs:      fs,
 	}, nil
 }
 
@@ -101,7 +98,7 @@ func (c *filterBuilder[T]) Eq(index string, key string) Filter {
 
 	// TODO: what should the context be?
 	// TODO: lazy... do that on Eval?
-	bitmap, err := idx.Fetch(context.Background(), c.fs, IndexedValue(key))
+	bitmap, err := idx.Fetch(context.Background(), IndexedValue(key))
 	if err != nil {
 		return &noOpFilter{}
 	}

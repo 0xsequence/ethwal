@@ -78,15 +78,18 @@ type Indexes[T any] map[IndexName]Index[T]
 
 // Index is an index struct.
 type Index[T any] struct {
-	name             IndexName
-	indexFunc        IndexFunction[T]
+	name      IndexName
+	indexFunc IndexFunction[T]
+	fs        storage.FS
+
 	numBlocksIndexed *atomic.Uint64
 }
 
-func NewIndex[T any](name IndexName, indexFunc IndexFunction[T]) Index[T] {
+func NewIndex[T any](name IndexName, indexFunc IndexFunction[T], fs storage.FS) Index[T] {
 	return Index[T]{
 		name:      name.Normalize(),
 		indexFunc: indexFunc,
+		fs:        fs,
 	}
 }
 
@@ -94,8 +97,8 @@ func (i *Index[T]) Name() IndexName {
 	return i.name
 }
 
-func (i *Index[T]) Fetch(ctx context.Context, fs storage.FS, indexValue IndexedValue) (*roaring64.Bitmap, error) {
-	file, err := NewIndexFile(fs, i.name, indexValue)
+func (i *Index[T]) Fetch(ctx context.Context, indexValue IndexedValue) (*roaring64.Bitmap, error) {
+	file, err := NewIndexFile(i.fs, i.name, indexValue)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open IndexBlock file: %w", err)
 	}
@@ -107,8 +110,8 @@ func (i *Index[T]) Fetch(ctx context.Context, fs storage.FS, indexValue IndexedV
 	return bmap, nil
 }
 
-func (i *Index[T]) IndexBlock(ctx context.Context, fs storage.FS, block Block[T]) (*IndexUpdate, error) {
-	numBlocksIndexed, err := i.LastBlockNumIndexed(ctx, fs)
+func (i *Index[T]) IndexBlock(ctx context.Context, block Block[T]) (*IndexUpdate, error) {
+	numBlocksIndexed, err := i.LastBlockNumIndexed(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected: failed to get number of blocks indexed: %w", err)
 	}
@@ -153,8 +156,8 @@ func (i *Index[T]) IndexBlock(ctx context.Context, fs storage.FS, block Block[T]
 	return indexUpdate, nil
 }
 
-func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexUpdate *IndexUpdate) error {
-	lastBlockNumIndexed, err := i.LastBlockNumIndexed(ctx, fs)
+func (i *Index[T]) Store(ctx context.Context, indexUpdate *IndexUpdate) error {
+	lastBlockNumIndexed, err := i.LastBlockNumIndexed(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get number of blocks indexed: %w", err)
 	}
@@ -167,7 +170,7 @@ func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexUpdate *IndexU
 			continue
 		}
 
-		file, err := NewIndexFile(fs, i.name, indexValue)
+		file, err := NewIndexFile(i.fs, i.name, indexValue)
 		if err != nil {
 			return fmt.Errorf("failed to open or create IndexBlock file: %w", err)
 		}
@@ -185,7 +188,7 @@ func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexUpdate *IndexU
 		}
 	}
 
-	err = i.storeLastBlockNumIndexed(ctx, fs, indexUpdate.LastBlockNum)
+	err = i.storeLastBlockNumIndexed(ctx, indexUpdate.LastBlockNum)
 	if err != nil {
 		return fmt.Errorf("failed to store number of blocks indexed: %w", err)
 	}
@@ -193,12 +196,12 @@ func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexUpdate *IndexU
 	return nil
 }
 
-func (i *Index[T]) LastBlockNumIndexed(ctx context.Context, fs storage.FS) (uint64, error) {
+func (i *Index[T]) LastBlockNumIndexed(ctx context.Context) (uint64, error) {
 	if i.numBlocksIndexed != nil {
 		return i.numBlocksIndexed.Load(), nil
 	}
 
-	file, err := fs.Open(ctx, lastBlockNumIndexedPath(string(i.name)), nil)
+	file, err := i.fs.Open(ctx, lastBlockNumIndexedPath(string(i.name)), nil)
 	if err != nil {
 		// file doesn't exist
 		return 0, nil
@@ -222,9 +225,9 @@ func (i *Index[T]) LastBlockNumIndexed(ctx context.Context, fs storage.FS) (uint
 	return numBlocksIndexed, nil
 }
 
-func (i *Index[T]) storeLastBlockNumIndexed(ctx context.Context, fs storage.FS, numBlocksIndexed uint64) error {
+func (i *Index[T]) storeLastBlockNumIndexed(ctx context.Context, numBlocksIndexed uint64) error {
 	var prevBlockIndexed uint64
-	blocksIndexed, err := i.LastBlockNumIndexed(ctx, fs)
+	blocksIndexed, err := i.LastBlockNumIndexed(ctx)
 	if err == nil {
 		prevBlockIndexed = blocksIndexed
 	}
@@ -233,7 +236,7 @@ func (i *Index[T]) storeLastBlockNumIndexed(ctx context.Context, fs storage.FS, 
 		return nil
 	}
 
-	file, err := fs.Create(ctx, lastBlockNumIndexedPath(string(i.name)), nil)
+	file, err := i.fs.Create(ctx, lastBlockNumIndexedPath(string(i.name)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to open IndexBlock file: %w", err)
 	}

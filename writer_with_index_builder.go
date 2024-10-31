@@ -7,19 +7,15 @@ import (
 	"github.com/0xsequence/ethwal/storage"
 )
 
-const indexDir = ".idx/"
-
 type writerWithFilter[T any] struct {
 	writer       Writer[T]
 	indexBuilder *IndexBuilder[T]
-	fs           storage.FS
 }
 
 var _ Writer[any] = (*writerWithFilter[any])(nil)
 
 func NewWriterWithIndexBuilder[T any](ctx context.Context, writer Writer[T], indexes Indexes[T]) (Writer[T], error) {
-	fs := storage.NewPrefixWrapper(writer.FileSystem(), indexDir)
-	indexBuilder, err := NewIndexBuilder[T](ctx, indexes, fs)
+	indexBuilder, err := NewIndexBuilder[T](ctx, indexes)
 	opts := writer.Options()
 	wrappedPolicy := NewWrappedRollPolicy(opts.FileRollPolicy, func(ctx context.Context) {
 		err := indexBuilder.Flush(ctx)
@@ -33,11 +29,11 @@ func NewWriterWithIndexBuilder[T any](ctx context.Context, writer Writer[T], ind
 	if err != nil {
 		return nil, err
 	}
-	return &writerWithFilter[T]{indexBuilder: indexBuilder, writer: writer, fs: fs}, nil
+	return &writerWithFilter[T]{indexBuilder: indexBuilder, writer: writer}, nil
 }
 
 func (c *writerWithFilter[T]) FileSystem() storage.FS {
-	return c.fs
+	return c.writer.FileSystem()
 }
 
 func (c *writerWithFilter[T]) Write(ctx context.Context, block Block[T]) error {

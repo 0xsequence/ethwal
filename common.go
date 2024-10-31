@@ -454,7 +454,7 @@ func (fi *FileIndex) readFiles(ctx context.Context, rdr io.Reader) ([]*File, err
 	return files, nil
 }
 
-// migrateToFileIndex migrates all ethwal files to the file Index
+// migrateToFileIndex migrates all ethwal files to the file index
 func migrateToFileIndex(ctx context.Context, fs storage.FS) error {
 	wlk, ok := fs.(storage.Walker)
 	if !ok {

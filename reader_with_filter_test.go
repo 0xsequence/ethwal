@@ -5,10 +5,8 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path"
 	"testing"
 
-	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,9 +34,12 @@ func setupReaderWithFilterTest(t *testing.T) Indexes[[]int] {
 
 	w.Close(context.Background())
 
-	indexes := generateMixedIntIndexes(local.NewLocalFS(path.Join(testPath, ".indexes")))
+	indexes := generateMixedIntIndexes()
 
-	ib, err := NewIndexer(context.Background(), indexes)
+	ib, err := NewIndexer(context.Background(), IndexerOptions[[]int]{
+		Dataset: opt.Dataset,
+		Indexes: indexes,
+	})
 	require.NoError(t, err)
 
 	for _, block := range blocks {
@@ -69,7 +70,12 @@ func TestReaderWithFilter(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	fb, err := NewFilterBuilder(indexes)
+	fb, err := NewFilterBuilder(context.Background(), FilterBuilderOptions[[]int]{
+		Dataset: Dataset{
+			Path: testPath,
+		},
+		Indexes: indexes,
+	})
 	require.NoError(t, err)
 
 	r, err = NewReaderWithFilter[[]int](r, fb.Eq("only_even", "true"))

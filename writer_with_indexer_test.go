@@ -6,7 +6,6 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,9 +16,14 @@ func TestWriterWithIndexer(t *testing.T) {
 
 	blocks := generateMixedIntBlocks()
 
-	indexes := generateMixedIntIndexes(local.NewLocalFS(path.Join(testPath, ".indexes")))
+	indexes := generateMixedIntIndexes()
 
-	indexer, err := NewIndexer(context.Background(), indexes)
+	indexer, err := NewIndexer(context.Background(), IndexerOptions[[]int]{
+		Dataset: Dataset{
+			Path: testPath,
+		},
+		Indexes: indexes,
+	})
 	require.NoError(t, err)
 
 	w, err := NewWriter[[]int](Options{

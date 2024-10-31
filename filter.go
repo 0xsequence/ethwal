@@ -1,8 +1,13 @@
 package ethwal
 
 import (
+	"cmp"
 	"context"
+	"fmt"
+	"path"
 
+	"github.com/0xsequence/ethwal/storage"
+	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 )
 
@@ -23,13 +28,36 @@ type FilterBuilder interface {
 	Eq(index string, key string) Filter
 }
 
-type filterBuilder[T any] struct {
-	indexes map[IndexName]Index[T]
+type FilterBuilderOptions[T any] struct {
+	Dataset    Dataset
+	FileSystem storage.FS
+
+	Indexes Indexes[T]
 }
 
-func NewFilterBuilder[T any](indexes Indexes[T]) (FilterBuilder, error) {
+func (o FilterBuilderOptions[T]) WithDefaults() FilterBuilderOptions[T] {
+	o.FileSystem = cmp.Or(o.FileSystem, storage.FS(local.NewLocalFS("")))
+	return o
+}
+
+type filterBuilder[T any] struct {
+	ctx context.Context
+
+	indexes map[IndexName]Index[T]
+	fs      storage.FS
+}
+
+func NewFilterBuilder[T any](ctx context.Context, opt FilterBuilderOptions[T]) (FilterBuilder, error) {
+	// apply default options on uninitialized fields
+	opt = opt.WithDefaults()
+
+	// mount indexes directory
+	fs := storage.NewPrefixWrapper(opt.FileSystem, fmt.Sprintf("%s/", path.Join(opt.Dataset.FullPath(), IndexesDirectory)))
+
 	return &filterBuilder[T]{
-		indexes: indexes,
+		ctx:     ctx,
+		indexes: opt.Indexes,
+		fs:      fs,
 	}, nil
 }
 
@@ -96,9 +124,7 @@ func (c *filterBuilder[T]) Eq(index string, key string) Filter {
 		return &noOpFilter{}
 	}
 
-	// TODO: what should the context be?
-	// TODO: lazy... do that on Eval?
-	bitmap, err := idx.Fetch(context.Background(), IndexedValue(key))
+	bitmap, err := idx.Fetch(c.ctx, c.fs, IndexedValue(key))
 	if err != nil {
 		return &noOpFilter{}
 	}

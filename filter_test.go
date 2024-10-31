@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path"
 	"testing"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethwal/storage"
-	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,31 +16,33 @@ var (
 	indexTestDir = ".tmp/ethwal_index_test"
 )
 
-func setupMockData[T any](subDir string, indexGenerator func(fs storage.FS) Indexes[T], blockGenerator func() []Block[T]) (*Indexer[T], Indexes[T], storage.FS, func(), error) {
-	fs := local.NewLocalFS(path.Join(indexTestDir, subDir))
-	indexes := indexGenerator(fs)
-	indexBuilder, err := NewIndexer(context.Background(), indexes)
+func setupMockData[T any](indexGenerator func() Indexes[T], blockGenerator func() []Block[T]) (*Indexer[T], Indexes[T], storage.FS, func(), error) {
+	indexes := indexGenerator()
+	indexer, err := NewIndexer(context.Background(), IndexerOptions[T]{
+		Dataset: Dataset{Path: indexTestDir},
+		Indexes: indexes,
+	})
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 	blocks := blockGenerator()
 	for _, block := range blocks {
-		err := indexBuilder.Index(context.Background(), block)
+		err := indexer.Index(context.Background(), block)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
 	}
-	err = indexBuilder.Flush(context.Background())
+	err = indexer.Flush(context.Background())
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	return indexBuilder, indexes, fs, cleanupIndexMockData(subDir), nil
+	return indexer, indexes, nil, cleanupIndexMockData(), nil
 }
 
-func cleanupIndexMockData(subDir string) func() {
+func cleanupIndexMockData() func() {
 	return func() {
-		err := os.RemoveAll(path.Join(indexTestDir, subDir))
+		err := os.RemoveAll(indexTestDir)
 		if err != nil {
 			panic(err)
 		}
@@ -131,19 +131,19 @@ func generateIntBlocks() []Block[[]int] {
 	return blocks
 }
 
-func generateMixedIntIndexes(fs storage.FS) Indexes[[]int] {
+func generateMixedIntIndexes() Indexes[[]int] {
 	indexes := Indexes[[]int]{}
-	indexes["all"] = NewIndex[[]int]("all", indexBlock, fs)
-	indexes["odd_even"] = NewIndex[[]int]("odd_even", indexOddEvenBlocks, fs)
-	indexes["only_even"] = NewIndex[[]int]("only_even", indexOnlyEvenBlocks, fs)
-	indexes["only_odd"] = NewIndex[[]int]("only_odd", indexOnlyOddBlocks, fs)
+	indexes["all"] = NewIndex[[]int]("all", indexBlock)
+	indexes["odd_even"] = NewIndex[[]int]("odd_even", indexOddEvenBlocks)
+	indexes["only_even"] = NewIndex[[]int]("only_even", indexOnlyEvenBlocks)
+	indexes["only_odd"] = NewIndex[[]int]("only_odd", indexOnlyOddBlocks)
 	return indexes
 }
 
-func generateIntIndexes(fs storage.FS) Indexes[[]int] {
+func generateIntIndexes() Indexes[[]int] {
 	indexes := Indexes[[]int]{}
-	indexes["all"] = NewIndex[[]int]("all", indexAll, fs)
-	indexes["none"] = NewIndex[[]int]("none", indexNone, fs)
+	indexes["all"] = NewIndex[[]int]("all", indexAll)
+	indexes["none"] = NewIndex[[]int]("none", indexNone)
 	return indexes
 }
 
@@ -258,11 +258,16 @@ func TestMaxMagicCompoundID(t *testing.T) {
 }
 
 func TestIntMixFiltering(t *testing.T) {
-	_, indexes, _, cleanup, err := setupMockData("int_mix", generateMixedIntIndexes, generateMixedIntBlocks)
+	_, indexes, _, cleanup, err := setupMockData(generateMixedIntIndexes, generateMixedIntBlocks)
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewFilterBuilder(indexes)
+	f, err := NewFilterBuilder(context.Background(), FilterBuilderOptions[[]int]{
+		Dataset: Dataset{
+			Path: indexTestDir,
+		},
+		Indexes: indexes,
+	})
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
 
@@ -316,11 +321,14 @@ func TestIntMixFiltering(t *testing.T) {
 }
 
 func TestFiltering(t *testing.T) {
-	_, indexes, _, cleanup, err := setupMockData("int_filtering", generateIntIndexes, generateIntBlocks)
+	_, indexes, _, cleanup, err := setupMockData(generateIntIndexes, generateIntBlocks)
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewFilterBuilder(indexes)
+	f, err := NewFilterBuilder(context.Background(), FilterBuilderOptions[[]int]{
+		Dataset: Dataset{Path: indexTestDir},
+		Indexes: indexes,
+	})
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
 	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).Eval()
@@ -341,7 +349,7 @@ func TestFiltering(t *testing.T) {
 }
 
 func TestLowestIndexedBlockNum(t *testing.T) {
-	indexer, indexes, fs, cleanup, err := setupMockData("int_indexing_num", generateIntIndexes, generateIntBlocks)
+	indexer, indexes, _, cleanup, err := setupMockData(generateIntIndexes, generateIntBlocks)
 	assert.NoError(t, err)
 	defer cleanup()
 
@@ -350,13 +358,16 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 
 	for _, i := range indexes {
 		i.numBlocksIndexed = nil
-		block, err := i.LastBlockNumIndexed(context.Background())
+		block, err := i.LastBlockNumIndexed(context.Background(), indexer.fs)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(99), block)
 	}
 
-	indexes = generateIntIndexes(fs)
-	indexer, err = NewIndexer(context.Background(), indexes)
+	indexes = generateIntIndexes()
+	indexer, err = NewIndexer(context.Background(), IndexerOptions[[]int]{
+		Dataset: Dataset{Path: indexTestDir},
+		Indexes: indexes,
+	})
 	assert.NoError(t, err)
 	lowestBlockIndexed := indexer.BlockNum()
 	assert.Equal(t, uint64(99), lowestBlockIndexed)
@@ -364,8 +375,11 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	// add another filter...
 	// indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
 	// setup fresh objects
-	indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks, fs)
-	indexer, err = NewIndexer(context.Background(), indexes)
+	indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
+	indexer, err = NewIndexer(context.Background(), IndexerOptions[[]int]{
+		Dataset: Dataset{Path: indexTestDir},
+		Indexes: indexes,
+	})
 	assert.NoError(t, err)
 	lowestBlockIndexed = indexer.BlockNum()
 	assert.Equal(t, uint64(0), lowestBlockIndexed)

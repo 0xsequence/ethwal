@@ -51,10 +51,10 @@ func (i IndexName) Normalize() IndexName {
 	return IndexName(strings.ToLower(string(i)))
 }
 
-// IndexedValue is the value of an index.
+// IndexedValue is the indexed value of an index.
 type IndexedValue string
 
-// IndexUpdate is a map of index values to bitmaps.
+// IndexUpdate is a map of indexed values and their corresponding bitmaps.
 type IndexUpdate struct {
 	Data         map[IndexedValue]*roaring64.Bitmap
 	LastBlockNum uint64
@@ -190,7 +190,7 @@ func (i *Index[T]) Store(ctx context.Context, indexUpdate *IndexUpdate) error {
 
 	err = i.storeLastBlockNumIndexed(ctx, indexUpdate.LastBlockNum)
 	if err != nil {
-		return fmt.Errorf("failed to store number of blocks indexed: %w", err)
+		return fmt.Errorf("failed to index number of blocks indexed: %w", err)
 	}
 
 	return nil
@@ -201,7 +201,7 @@ func (i *Index[T]) LastBlockNumIndexed(ctx context.Context) (uint64, error) {
 		return i.numBlocksIndexed.Load(), nil
 	}
 
-	file, err := i.fs.Open(ctx, lastBlockNumIndexedPath(string(i.name)), nil)
+	file, err := i.fs.Open(ctx, indexedBlockNumFilePath(string(i.name)), nil)
 	if err != nil {
 		// file doesn't exist
 		return 0, nil
@@ -236,7 +236,7 @@ func (i *Index[T]) storeLastBlockNumIndexed(ctx context.Context, numBlocksIndexe
 		return nil
 	}
 
-	file, err := i.fs.Create(ctx, lastBlockNumIndexedPath(string(i.name)), nil)
+	file, err := i.fs.Create(ctx, indexedBlockNumFilePath(string(i.name)), nil)
 	if err != nil {
 		return fmt.Errorf("failed to open IndexBlock file: %w", err)
 	}
@@ -258,6 +258,10 @@ func (i *Index[T]) storeLastBlockNumIndexed(ctx context.Context, numBlocksIndexe
 	return nil
 }
 
+func indexedBlockNumFilePath(index string) string {
+	return fmt.Sprintf("%s/%s", index, "indexed")
+}
+
 func indexPath(index string, indexValue string) string {
 	hash := sha256.Sum224([]byte(indexValue))
 	return fmt.Sprintf("%s/%06d/%06d/%06d/%s",
@@ -267,8 +271,4 @@ func indexPath(index string, indexValue string) string {
 		binary.BigEndian.Uint64(hash[16:24])%NumberOfDirectoriesPerLevel, // level2
 		fmt.Sprintf("%s.idx", indexValue),                                // filename
 	)
-}
-
-func lastBlockNumIndexedPath(index string) string {
-	return fmt.Sprintf("%s/%s", index, "indexed")
 }

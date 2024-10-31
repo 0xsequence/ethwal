@@ -82,16 +82,16 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	// add prefix to file system
 	fs = storage.NewPrefixWrapper(fs, datasetPath)
 
-	// create file IndexBlock
+	// create file index
 	fileIndex := NewFileIndex(fs)
 
-	// load file IndexBlock
+	// load file index
 	ctx, cancel := context.WithTimeout(context.Background(), loadIndexFileTimeout)
 	defer cancel()
 
 	err := fileIndex.Load(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load file IndexBlock: %w", err)
+		return nil, fmt.Errorf("failed to load file index: %w", err)
 	}
 
 	return &reader[T]{

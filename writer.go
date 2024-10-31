@@ -65,16 +65,16 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	// mount FS with dataset path prefix
 	fs := storage.NewPrefixWrapper(opt.FileSystem, datasetPath)
 
-	// create file IndexBlock
+	// create file index
 	fileIndex := NewFileIndex(fs)
 
-	// load file IndexBlock
+	// load file index
 	ctx, cancel := context.WithTimeout(context.Background(), loadIndexFileTimeout)
 	defer cancel()
 
 	err := fileIndex.Load(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load file IndexBlock: %w", err)
+		return nil, fmt.Errorf("failed to load file index: %w", err)
 	}
 
 	var lastBlockNum uint64
@@ -201,13 +201,13 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 	newFile := &File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
 	w.options.FileRollPolicy.onFlush(ctx)
 
-	// add file to file IndexBlock
+	// add file to file index
 	err := w.fileIndex.AddFile(newFile)
 	if err != nil {
 		return err
 	}
 
-	// save file IndexBlock
+	// save file index
 	err = w.fileIndex.Save(ctx)
 	if err != nil {
 		return err
@@ -230,7 +230,7 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 		return err
 	}
 
-	// wait for both file and file IndexBlock to be saved
+	// wait for both file and file index to be saved
 	// todo: save in background
 	return nil
 }

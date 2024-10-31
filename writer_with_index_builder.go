@@ -17,9 +17,9 @@ type writerWithFilter[T any] struct {
 
 var _ Writer[any] = (*writerWithFilter[any])(nil)
 
-func NewWriterWithIndexBuilder[T any](writer Writer[T], indexes Indexes[T]) (Writer[T], error) {
+func NewWriterWithIndexBuilder[T any](ctx context.Context, writer Writer[T], indexes Indexes[T]) (Writer[T], error) {
 	fs := storage.NewPrefixWrapper(writer.FileSystem(), indexDir)
-	indexBuilder, err := NewIndexBuilder[T](indexes, fs)
+	indexBuilder, err := NewIndexBuilder[T](ctx, indexes, fs)
 	opts := writer.Options()
 	wrappedPolicy := NewWrappedRollPolicy(opts.FileRollPolicy, func(ctx context.Context) {
 		err := indexBuilder.Flush(ctx)

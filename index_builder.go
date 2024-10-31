@@ -10,96 +10,79 @@ import (
 )
 
 type IndexBuilder[T any] struct {
-	mu             sync.Mutex
-	indexes        map[IndexName]Index[T]
-	indexMaps      map[IndexName]map[IndexValue]*roaring64.Bitmap
-	indexMaxBlocks map[IndexName]uint64
-	fs             storage.FS
+	mu           sync.Mutex
+	indexes      map[IndexName]Index[T]
+	indexUpdates map[IndexName]*IndexUpdate
+	fs           storage.FS
 }
 
-func NewIndexBuilder[T any](indexes Indexes[T], fs storage.FS) (*IndexBuilder[T], error) {
-	indexMaps := make(map[IndexName]map[IndexValue]*roaring64.Bitmap)
-	indexMaxBlocks := make(map[IndexName]uint64)
+func NewIndexBuilder[T any](ctx context.Context, indexes Indexes[T], fs storage.FS) (*IndexBuilder[T], error) {
+	indexMaps := make(map[IndexName]*IndexUpdate)
 	for _, index := range indexes {
-		indexMaps[index.name] = make(map[IndexValue]*roaring64.Bitmap)
-		indexMaxBlocks[index.name] = 0
+		lastBlockNum, err := index.LastBlockNumIndexed(ctx, fs)
+		if err != nil {
+			return nil, fmt.Errorf("IndexBuilder.NewIndexBuilder: failed to get last block number indexed for %s: %w", index.Name(), err)
+		}
+
+		indexMaps[index.name] = &IndexUpdate{Data: make(map[IndexedValue]*roaring64.Bitmap), LastBlockNum: lastBlockNum}
 	}
-	return &IndexBuilder[T]{indexes: indexes, indexMaps: indexMaps, indexMaxBlocks: indexMaxBlocks, fs: fs}, nil
+	return &IndexBuilder[T]{indexes: indexes, indexUpdates: indexMaps, fs: fs}, nil
 }
 
 func (b *IndexBuilder[T]) Index(ctx context.Context, block Block[T]) error {
 	for _, index := range b.indexes {
-		bmUpdate, err := index.Index(ctx, b.fs, block)
+		bmUpdate, err := index.IndexBlock(ctx, b.fs, block)
 		if err != nil {
 			return err
 		}
-
-		if b.indexMaxBlocks[index.name] < block.Number {
-			// note the max block number indexed
-			b.indexMaxBlocks[index.name] = block.Number
-		}
-
 		if bmUpdate == nil {
 			continue
 		}
 
 		b.mu.Lock()
-		for indexValue, bm := range bmUpdate {
-			if _, ok := b.indexMaps[index.name][indexValue]; !ok {
-				b.indexMaps[index.name][indexValue] = roaring64.New()
-			}
-			b.indexMaps[index.name][indexValue].Or(bm)
-			if err != nil {
-				continue
-			}
-		}
-
+		updateBatch := b.indexUpdates[index.name]
+		updateBatch.Merge(bmUpdate)
+		b.indexUpdates[index.name] = updateBatch
 		b.mu.Unlock()
 	}
 
 	return nil
 }
 
-func (b *IndexBuilder[T]) Close(ctx context.Context) error {
-	return b.Flush(ctx)
-}
-
 func (b *IndexBuilder[T]) Flush(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	for name, indexMap := range b.indexMaps {
+	for name, indexUpdate := range b.indexUpdates {
 		idx, ok := b.indexes[name]
 		if !ok {
 			continue
 		}
 
-		err := idx.Store(ctx, b.fs, indexMap, b.indexMaxBlocks[name])
+		err := idx.Store(ctx, b.fs, indexUpdate)
 		if err != nil {
 			return err
 		}
 	}
 
-	// clear indexMaps
-	b.indexMaps = make(map[IndexName]map[IndexValue]*roaring64.Bitmap)
-	b.indexMaxBlocks = make(map[IndexName]uint64)
+	// clear indexUpdates
 	for _, index := range b.indexes {
-		b.indexMaps[index.name] = make(map[IndexValue]*roaring64.Bitmap)
-		b.indexMaxBlocks[index.name] = 0
+		b.indexUpdates[index.name].Data = make(map[IndexedValue]*roaring64.Bitmap)
 	}
-
 	return nil
 }
 
-func (b *IndexBuilder[T]) GetLowestIndexedBlockNum(ctx context.Context) (uint64, error) {
+// LastIndexedBlockNum returns the lowest block number indexed by all indexes. If no blocks have been indexed, it returns 0.
+// This is useful for determining the starting block number for a new IndexBuilder.
+func (b *IndexBuilder[T]) LastIndexedBlockNum(ctx context.Context) (uint64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	var lowestBlockNum *uint64
 	for _, index := range b.indexes {
-		numBlocksIndexed, err := index.NumBlocksIndexed(ctx, b.fs)
+		numBlocksIndexed, err := index.LastBlockNumIndexed(ctx, b.fs)
 		if err != nil {
-			return 0, fmt.Errorf("IndexBuilder.GetLowestIndexedBlockNum: failed to get number of blocks indexed: %w", err)
+			return 0, fmt.Errorf("IndexBuilder.LastIndexedBlockNum: failed to get number of blocks indexed: %w", err)
 		}
 		if lowestBlockNum == nil || numBlocksIndexed < *lowestBlockNum {
 			lowestBlockNum = &numBlocksIndexed
@@ -111,4 +94,8 @@ func (b *IndexBuilder[T]) GetLowestIndexedBlockNum(ctx context.Context) (uint64,
 	}
 
 	return *lowestBlockNum, nil
+}
+
+func (b *IndexBuilder[T]) Close(ctx context.Context) error {
+	return b.Flush(ctx)
 }

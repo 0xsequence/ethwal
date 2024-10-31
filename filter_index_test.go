@@ -19,7 +19,7 @@ func TestIntMixFiltering(t *testing.T) {
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewIndexesFilterBuilder(indexes, fs)
+	f, err := NewFilterBuilder(indexes, fs)
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
 
@@ -77,7 +77,7 @@ func TestFiltering(t *testing.T) {
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewIndexesFilterBuilder(indexes, fs)
+	f, err := NewFilterBuilder(indexes, fs)
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
 	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).Eval()
@@ -102,21 +102,21 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	assert.NoError(t, err)
 	defer cleanup()
 
-	blockNum, err := builder.GetLowestIndexedBlockNum(context.Background())
+	blockNum, err := builder.LastIndexedBlockNum(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(99), blockNum)
 
 	for _, i := range indexes {
 		i.numBlocksIndexed = nil
-		block, err := i.NumBlocksIndexed(context.Background(), fs)
+		block, err := i.LastBlockNumIndexed(context.Background(), fs)
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(99), block)
 	}
 
 	indexes = generateIntIndexes()
-	builder, err = NewIndexBuilder(indexes, fs)
+	builder, err = NewIndexBuilder(context.Background(), indexes, fs)
 	assert.NoError(t, err)
-	lowestBlockIndexed, err := builder.GetLowestIndexedBlockNum(context.Background())
+	lowestBlockIndexed, err := builder.LastIndexedBlockNum(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(99), lowestBlockIndexed)
 
@@ -124,9 +124,9 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	// indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
 	// setup fresh objects
 	indexes["odd_even"] = NewIndex("odd_even", indexOddEvenBlocks)
-	builder, err = NewIndexBuilder(indexes, fs)
+	builder, err = NewIndexBuilder(context.Background(), indexes, fs)
 	assert.NoError(t, err)
-	lowestBlockIndexed, err = builder.GetLowestIndexedBlockNum(context.Background())
+	lowestBlockIndexed, err = builder.LastIndexedBlockNum(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(0), lowestBlockIndexed)
 	blocks := generateIntBlocks()
@@ -136,7 +136,7 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	}
 	err = builder.Flush(context.Background())
 	assert.NoError(t, err)
-	lowestBlockIndexed, err = builder.GetLowestIndexedBlockNum(context.Background())
+	lowestBlockIndexed, err = builder.LastIndexedBlockNum(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(49), lowestBlockIndexed)
 
@@ -147,7 +147,7 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	}
 	err = builder.Flush(context.Background())
 	assert.NoError(t, err)
-	lowestBlockIndexed, err = builder.GetLowestIndexedBlockNum(context.Background())
+	lowestBlockIndexed, err = builder.LastIndexedBlockNum(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(99), lowestBlockIndexed)
 }

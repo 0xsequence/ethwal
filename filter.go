@@ -29,7 +29,7 @@ type filterBuilder[T any] struct {
 	fs      storage.FS
 }
 
-func NewIndexesFilterBuilder[T any](indexes Indexes[T], fs storage.FS) (FilterBuilder, error) {
+func NewFilterBuilder[T any](indexes Indexes[T], fs storage.FS) (FilterBuilder, error) {
 	return &filterBuilder[T]{
 		indexes: indexes,
 		fs:      fs,
@@ -92,7 +92,7 @@ func (c *filterBuilder[T]) Or(filters ...Filter) Filter {
 }
 
 func (c *filterBuilder[T]) Eq(index string, key string) Filter {
-	// fetch the Index and store it in the result set
+	// fetch the IndexBlock and store it in the result set
 	index_ := IndexName(index).Normalize()
 	idx, ok := c.indexes[index_]
 	if !ok {
@@ -101,7 +101,7 @@ func (c *filterBuilder[T]) Eq(index string, key string) Filter {
 
 	// TODO: what should the context be?
 	// TODO: lazy... do that on Eval?
-	bitmap, err := idx.Fetch(context.Background(), c.fs, IndexValue(key))
+	bitmap, err := idx.Fetch(context.Background(), c.fs, IndexedValue(key))
 	if err != nil {
 		return &noOpFilter{}
 	}

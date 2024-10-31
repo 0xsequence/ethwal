@@ -14,7 +14,7 @@ type IndexFile struct {
 	path string
 }
 
-func NewIndexFile(fs storage.FS, indexName IndexName, value IndexValue) (*IndexFile, error) {
+func NewIndexFile(fs storage.FS, indexName IndexName, value IndexedValue) (*IndexFile, error) {
 	path := indexPath(string(indexName), string(value))
 	return &IndexFile{fs: fs, path: path}, nil
 }
@@ -25,7 +25,7 @@ func (i *IndexFile) Read(ctx context.Context) (*roaring64.Bitmap, error) {
 		// TODO: decide if we should report an error or just create a new roaring bitmap...
 		// with this approach we are not reporting an error if the file does not exist
 		// and we just write the new bitmap when write is called...
-		// return nil, fmt.Errorf("failed to open Index file: %w", err)
+		// return nil, fmt.Errorf("failed to open IndexBlock file: %w", err)
 		return roaring64.New(), nil
 	}
 	defer file.Close()
@@ -35,7 +35,7 @@ func (i *IndexFile) Read(ctx context.Context) (*roaring64.Bitmap, error) {
 
 	buf, err := io.ReadAll(decomp)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read Index file: %w", err)
+		return nil, fmt.Errorf("failed to read IndexBlock file: %w", err)
 	}
 	bmap := roaring64.New()
 	err = bmap.UnmarshalBinary(buf)
@@ -49,7 +49,7 @@ func (i *IndexFile) Read(ctx context.Context) (*roaring64.Bitmap, error) {
 func (i *IndexFile) Write(ctx context.Context, bmap *roaring64.Bitmap) error {
 	file, err := i.fs.Create(ctx, i.path, nil)
 	if err != nil {
-		return fmt.Errorf("failed to open Index file: %w", err)
+		return fmt.Errorf("failed to open IndexBlock file: %w", err)
 	}
 	defer file.Close()
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/math"
@@ -16,9 +17,9 @@ var (
 )
 
 func setupMockData[T any](subDir string, indexGenerator func() Indexes[T], blockGenerator func() []Block[T]) (*IndexBuilder[T], Indexes[T], storage.FS, func(), error) {
-	fs := local.NewLocalFS(indexTestDir + "/" + subDir)
+	fs := local.NewLocalFS(path.Join(indexTestDir, subDir))
 	indexes := indexGenerator()
-	indexBuilder, err := NewIndexBuilder(indexes, fs)
+	indexBuilder, err := NewIndexBuilder(context.Background(), indexes, fs)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -39,7 +40,7 @@ func setupMockData[T any](subDir string, indexGenerator func() Indexes[T], block
 
 func cleanupIndexMockData(subDir string) func() {
 	return func() {
-		err := os.RemoveAll(indexTestDir + "/" + subDir)
+		err := os.RemoveAll(path.Join(indexTestDir, subDir))
 		if err != nil {
 			panic(err)
 		}
@@ -144,13 +145,13 @@ func generateIntIndexes() Indexes[[]int] {
 	return indexes
 }
 
-func indexOddEvenBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+func indexOddEvenBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[IndexedValue][]uint16, err error) {
 	if len(block.Data) == 0 {
 		return false, nil, nil
 	}
 
 	toIndex = true
-	indexValueMap = make(map[string][]uint16)
+	indexValueMap = make(map[IndexedValue][]uint16)
 	indexValueMap["even"] = []uint16{}
 	indexValueMap["odd"] = []uint16{}
 	for i, data := range block.Data {
@@ -164,13 +165,13 @@ func indexOddEvenBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[str
 	return
 }
 
-func indexOnlyEvenBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+func indexOnlyEvenBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[IndexedValue][]uint16, err error) {
 	if len(block.Data) == 0 {
 		return false, nil, nil
 	}
 
 	toIndex = true
-	indexValueMap = make(map[string][]uint16)
+	indexValueMap = make(map[IndexedValue][]uint16)
 	for _, data := range block.Data {
 		if data%2 != 0 {
 			toIndex = false
@@ -184,13 +185,13 @@ func indexOnlyEvenBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[st
 
 	return
 }
-func indexOnlyOddBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+func indexOnlyOddBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[IndexedValue][]uint16, err error) {
 	if len(block.Data) == 0 {
 		return false, nil, nil
 	}
 
 	toIndex = true
-	indexValueMap = make(map[string][]uint16)
+	indexValueMap = make(map[IndexedValue][]uint16)
 	for _, data := range block.Data {
 		if data%2 == 0 {
 			toIndex = false
@@ -205,7 +206,7 @@ func indexOnlyOddBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[str
 	return
 }
 
-func indexBlock(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+func indexBlock(block Block[[]int]) (toIndex bool, indexValueMap map[IndexedValue][]uint16, err error) {
 	if len(block.Data) == 0 {
 		return false, nil, nil
 	}
@@ -215,9 +216,9 @@ func indexBlock(block Block[[]int]) (toIndex bool, indexValueMap map[string][]ui
 	}
 
 	toIndex = true
-	indexValueMap = make(map[string][]uint16)
+	indexValueMap = make(map[IndexedValue][]uint16)
 	for i, data := range block.Data {
-		dataStr := fmt.Sprintf("%d", data)
+		dataStr := IndexedValue(fmt.Sprintf("%d", data))
 		if _, ok := indexValueMap[dataStr]; !ok {
 			indexValueMap[dataStr] = []uint16{}
 		}
@@ -227,15 +228,15 @@ func indexBlock(block Block[[]int]) (toIndex bool, indexValueMap map[string][]ui
 	return
 }
 
-func indexAll(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+func indexAll(block Block[[]int]) (toIndex bool, indexValueMap map[IndexedValue][]uint16, err error) {
 	if len(block.Data) == 0 {
 		return false, nil, nil
 	}
 
 	toIndex = true
-	indexValueMap = make(map[string][]uint16)
+	indexValueMap = make(map[IndexedValue][]uint16)
 	for _, data := range block.Data {
-		dataStr := fmt.Sprintf("%d", data)
+		dataStr := IndexedValue(fmt.Sprintf("%d", data))
 		if _, ok := indexValueMap[dataStr]; !ok {
 			indexValueMap[dataStr] = []uint16{math.MaxUint16}
 		}
@@ -244,6 +245,6 @@ func indexAll(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint
 	return
 }
 
-func indexNone(block Block[[]int]) (toIndex bool, indexValueMap map[string][]uint16, err error) {
+func indexNone(block Block[[]int]) (toIndex bool, indexValueMap map[IndexedValue][]uint16, err error) {
 	return false, nil, nil
 }

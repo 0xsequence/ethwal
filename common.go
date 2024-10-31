@@ -364,7 +364,7 @@ func (fi *FileIndex) Load(ctx context.Context) error {
 }
 
 func (fi *FileIndex) Save(ctx context.Context) error {
-	// create file Index file
+	// create file IndexBlock file
 	indexFile, err := fi.fs.Create(ctx, FileIndexFileName, nil)
 	if err != nil {
 		return err
@@ -394,16 +394,16 @@ func (fi *FileIndex) Save(ctx context.Context) error {
 }
 
 func (fi *FileIndex) loadFiles(ctx context.Context) error {
-	// check if file Index exists, if not migrate all existing ethwal files to the file Index
+	// check if file IndexBlock exists, if not migrate all existing ethwal files to the file IndexBlock
 	indexFile, openErr := fi.fs.Open(context.Background(), FileIndexFileName, nil)
 	if openErr != nil && strings.Contains(openErr.Error(), "not exist") {
-		// migrate all existing ethwal files to the file Index
+		// migrate all existing ethwal files to the file IndexBlock
 		migrationErr := migrateToFileIndex(ctx, fi.fs)
 		if migrationErr != nil {
 			return migrationErr
 		}
 
-		// open file Index
+		// open file IndexBlock
 		indexFile, openErr = fi.fs.Open(context.Background(), FileIndexFileName, nil)
 		if openErr != nil && strings.Contains(openErr.Error(), "not exist") {
 			// no files exist, so we return an empty list

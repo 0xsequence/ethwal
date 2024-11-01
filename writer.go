@@ -13,10 +13,13 @@ import (
 )
 
 type Writer[T any] interface {
+	FileSystem() storage.FS
 	Write(ctx context.Context, b Block[T]) error
 	BlockNum() uint64
 	RollFile(ctx context.Context) error
 	Close(ctx context.Context) error
+	Options() Options
+	SetOptions(opt Options)
 }
 
 type writer[T any] struct {
@@ -92,6 +95,10 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 	}, nil
 }
 
+func (w *writer[T]) FileSystem() storage.FS {
+	return w.fs
+}
+
 func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -155,6 +162,14 @@ func (w *writer[T]) Close(ctx context.Context) error {
 	return nil
 }
 
+func (w *writer[T]) Options() Options {
+	return w.options
+}
+
+func (w *writer[T]) SetOptions(opt Options) {
+	w.options = opt
+}
+
 func (w *writer[T]) isReadyToWrite() bool {
 	return w.encoder != nil
 }
@@ -184,6 +199,7 @@ func (w *writer[T]) rollFile(ctx context.Context) error {
 func (w *writer[T]) writeFile(ctx context.Context) error {
 	// create new file
 	newFile := &File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
+	w.options.FileRollPolicy.onFlush(ctx)
 
 	// add file to file index
 	err := w.fileIndex.AddFile(newFile)

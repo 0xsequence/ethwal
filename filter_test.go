@@ -262,7 +262,7 @@ func TestIntMixFiltering(t *testing.T) {
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewFilterBuilder(context.Background(), FilterBuilderOptions[[]int]{
+	f, err := NewFilterBuilder(FilterBuilderOptions[[]int]{
 		Dataset: Dataset{
 			Path: indexTestDir,
 		},
@@ -293,21 +293,21 @@ func TestIntMixFiltering(t *testing.T) {
 		}
 	}
 
-	onlyEvenResults := onlyEvenFilter.Eval()
+	onlyEvenResults := onlyEvenFilter.Eval(context.Background())
 	assert.Len(t, onlyEvenResults.Bitmap().ToArray(), 20)
 	for _, id := range onlyEvenResults.Bitmap().ToArray() {
 		block, _ := IndexCompoundID(id).Split()
 		assert.True(t, block <= 20)
 	}
 
-	onlyOddResults := onlyOddFilter.Eval()
+	onlyOddResults := onlyOddFilter.Eval(context.Background())
 	assert.Len(t, onlyOddResults.Bitmap().ToArray(), 20+20)
 	for _, id := range onlyOddResults.Bitmap().ToArray() {
 		block, _ := IndexCompoundID(id).Split()
 		assert.True(t, (block > 20 && block < 41) || (block > 50 && block < 71))
 	}
 
-	numberAllResults := numberFilter.Eval()
+	numberAllResults := numberFilter.Eval(context.Background())
 	// 20*20
 	assert.Len(t, numberAllResults.Bitmap().ToArray(), 400)
 	for _, id := range numberAllResults.Bitmap().ToArray() {
@@ -316,7 +316,7 @@ func TestIntMixFiltering(t *testing.T) {
 	}
 
 	allNumberAndOdd := f.And(numberFilter, oddFilter)
-	allNumberOddResults := allNumberAndOdd.Eval()
+	allNumberOddResults := allNumberAndOdd.Eval(context.Background())
 	assert.ElementsMatch(t, numberAllResults.Bitmap().ToArray(), allNumberOddResults.Bitmap().ToArray())
 }
 
@@ -325,13 +325,13 @@ func TestFiltering(t *testing.T) {
 	assert.NoError(t, err)
 	defer cleanup()
 
-	f, err := NewFilterBuilder(context.Background(), FilterBuilderOptions[[]int]{
+	f, err := NewFilterBuilder(FilterBuilderOptions[[]int]{
 		Dataset: Dataset{Path: indexTestDir},
 		Indexes: indexes,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
-	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).Eval()
+	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).Eval(context.Background())
 	// result should contain block 1, 2, 3
 	assert.Len(t, result.Bitmap().ToArray(), 3)
 	block, _ := result.Next()
@@ -341,7 +341,7 @@ func TestFiltering(t *testing.T) {
 	block, _ = result.Next()
 	assert.Equal(t, uint64(3), block)
 
-	result = f.And(f.Eq("all", "1"), f.Eq("all", "2")).Eval()
+	result = f.And(f.Eq("all", "1"), f.Eq("all", "2")).Eval(context.Background())
 	// result should contain block 1
 	assert.Len(t, result.Bitmap().ToArray(), 1)
 	block, _ = result.Next()

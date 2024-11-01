@@ -17,9 +17,8 @@ var _ Reader[any] = (*readerWithFilter[any])(nil)
 
 func NewReaderWithFilter[T any](reader Reader[T], filter Filter) (Reader[T], error) {
 	return &readerWithFilter[T]{
-		reader:   reader,
-		filter:   filter,
-		iterator: filter.Eval(),
+		reader: reader,
+		filter: filter,
 	}, nil
 }
 
@@ -28,7 +27,7 @@ func (c *readerWithFilter[T]) FilesNum() int {
 }
 
 func (c *readerWithFilter[T]) Seek(ctx context.Context, blockNum uint64) error {
-	iter := c.filter.Eval()
+	iter := c.filter.Eval(ctx)
 	for iter.HasNext() {
 		nextBlock, _ := iter.Peek()
 		if nextBlock >= blockNum {
@@ -46,6 +45,12 @@ func (c *readerWithFilter[T]) BlockNum() uint64 {
 }
 
 func (c *readerWithFilter[T]) Read(ctx context.Context) (Block[T], error) {
+	// Lazy init iterator
+	if c.iterator == nil {
+		c.iterator = c.filter.Eval(ctx)
+	}
+
+	// Check if there are no more blocks to read
 	if !c.iterator.HasNext() {
 		return Block[T]{}, io.EOF
 	}

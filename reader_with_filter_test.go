@@ -70,7 +70,7 @@ func TestReaderWithFilter(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	fb, err := NewFilterBuilder(context.Background(), FilterBuilderOptions[[]int]{
+	fb, err := NewFilterBuilder(FilterBuilderOptions[[]int]{
 		Dataset: Dataset{
 			Path: testPath,
 		},

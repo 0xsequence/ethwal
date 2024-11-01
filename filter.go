@@ -12,7 +12,7 @@ import (
 )
 
 type Filter interface {
-	Eval() FilterIterator
+	Eval(ctx context.Context) FilterIterator
 }
 
 type FilterIterator interface {
@@ -47,7 +47,7 @@ type filterBuilder[T any] struct {
 	fs      storage.FS
 }
 
-func NewFilterBuilder[T any](ctx context.Context, opt FilterBuilderOptions[T]) (FilterBuilder, error) {
+func NewFilterBuilder[T any](opt FilterBuilderOptions[T]) (FilterBuilder, error) {
 	// apply default options on uninitialized fields
 	opt = opt.WithDefaults()
 
@@ -55,92 +55,83 @@ func NewFilterBuilder[T any](ctx context.Context, opt FilterBuilderOptions[T]) (
 	fs := storage.NewPrefixWrapper(opt.FileSystem, fmt.Sprintf("%s/", path.Join(opt.Dataset.FullPath(), IndexesDirectory)))
 
 	return &filterBuilder[T]{
-		ctx:     ctx,
 		indexes: opt.Indexes,
 		fs:      fs,
 	}, nil
 }
 
 type filter struct {
-	resultSet *roaring64.Bitmap
+	resultSet func(ctx context.Context) *roaring64.Bitmap
 }
 
-func (c *filter) Eval() FilterIterator {
+func (c *filter) Eval(ctx context.Context) FilterIterator {
 	if c.resultSet == nil {
-		c.resultSet = roaring64.New()
+		c.resultSet = func(ctx context.Context) *roaring64.Bitmap {
+			return roaring64.New()
+		}
 	}
-
-	return newFilterIterator(c.resultSet.Clone())
+	return newFilterIterator(c.resultSet(ctx))
 }
 
 func (c *filterBuilder[T]) And(filters ...Filter) Filter {
-	var bmap *roaring64.Bitmap
-	for _, filter := range filters {
-		if filter == nil {
-			continue
-		}
-		if _, ok := filter.(*noOpFilter); ok {
-			continue
-		}
-		iter := filter.Eval()
-		if bmap == nil {
-			bmap = iter.Bitmap().Clone()
-		} else {
-			bmap.And(iter.Bitmap())
-		}
-	}
 	return &filter{
-		resultSet: bmap,
+		resultSet: func(ctx context.Context) *roaring64.Bitmap {
+			var bmap *roaring64.Bitmap
+			for _, filter := range filters {
+				if filter == nil {
+					continue
+				}
+
+				iter := filter.Eval(ctx)
+				if bmap == nil {
+					bmap = iter.Bitmap().Clone()
+				} else {
+					bmap.And(iter.Bitmap())
+				}
+			}
+			return bmap
+		},
 	}
 }
 
 func (c *filterBuilder[T]) Or(filters ...Filter) Filter {
-	var bmap *roaring64.Bitmap
-	for _, filter := range filters {
-		if filter == nil {
-			continue
-		}
-		if _, ok := filter.(*noOpFilter); ok {
-			continue
-		}
-		iter := filter.Eval()
-		if bmap == nil {
-			bmap = iter.Bitmap().Clone()
-		} else {
-			bmap.Or(iter.Bitmap())
-		}
-	}
-
 	return &filter{
-		resultSet: bmap,
+		resultSet: func(ctx context.Context) *roaring64.Bitmap {
+			var bmap *roaring64.Bitmap
+			for _, filter := range filters {
+				if filter == nil {
+					continue
+				}
+
+				iter := filter.Eval(ctx)
+				if bmap == nil {
+					bmap = iter.Bitmap().Clone()
+				} else {
+					bmap.Or(iter.Bitmap())
+				}
+			}
+			return bmap
+		},
 	}
 }
 
 func (c *filterBuilder[T]) Eq(index string, key string) Filter {
-	// fetch the index file and include it in the result set
-	index_ := IndexName(index).Normalize()
-	idx, ok := c.indexes[index_]
-	if !ok {
-		return &noOpFilter{}
-	}
-
-	bitmap, err := idx.Fetch(c.ctx, c.fs, IndexedValue(key))
-	if err != nil {
-		return &noOpFilter{}
-	}
 
 	return &filter{
-		resultSet: bitmap,
-	}
-}
+		resultSet: func(ctx context.Context) *roaring64.Bitmap {
+			// fetch the index file and include it in the result set
+			index_ := IndexName(index).Normalize()
+			idx, ok := c.indexes[index_]
+			if !ok {
+				return roaring64.New()
+			}
 
-type noOpFilter struct{}
-
-func (n *noOpFilter) Eval() FilterIterator {
-	bmap := roaring64.New()
-	return &filterIterator{
-		iter:   bmap.Iterator(),
-		bitmap: bmap,
+			bitmap, err := idx.Fetch(ctx, c.fs, IndexedValue(key))
+			if err != nil {
+				return roaring64.New()
+			}
+			return bitmap
+		},
 	}
 }
 

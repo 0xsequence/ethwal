@@ -116,7 +116,12 @@ func (r *reader[T]) FileIndex() *FileIndex {
 	defer r.mu.Unlock()
 
 	newfiles := make([]*File, len(r.fileIndex.Files()))
-	copy(newfiles, r.fileIndex.Files())
+	for index, file := range r.fileIndex.Files() {
+		newfiles[index] = &File{
+			FirstBlockNum: file.FirstBlockNum,
+			LastBlockNum:  file.LastBlockNum,
+		}
+	}
 	return NewFileIndexFromFiles(stub.Stub{}, newfiles)
 }
 

@@ -238,7 +238,7 @@ func TestReader_NumWALFiles(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, 3, rdr.FilesNum())
+	assert.Equal(t, 3, rdr.FileNum())
 
 	require.NoError(t, rdr.Close())
 }

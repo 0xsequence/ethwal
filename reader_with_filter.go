@@ -22,8 +22,12 @@ func NewReaderWithFilter[T any](reader Reader[T], filter Filter) (Reader[T], err
 	}, nil
 }
 
-func (c *readerWithFilter[T]) FilesNum() int {
-	return c.reader.FilesNum()
+func (c *readerWithFilter[T]) FileNum() int {
+	return c.reader.FileNum()
+}
+
+func (c *readerWithFilter[T]) FileIndex() *FileIndex {
+	return c.reader.FileIndex()
 }
 
 func (c *readerWithFilter[T]) Seek(ctx context.Context, blockNum uint64) error {

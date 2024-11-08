@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/0xsequence/ethwal/storage/stub"
 	"github.com/fatih/structs"
 
 	"github.com/0xsequence/ethwal/storage"
@@ -121,7 +122,7 @@ func (r *reader[T]) FileIndex() *FileIndex {
 			LastBlockNum:  file.LastBlockNum,
 		})
 	}
-	return NewFileIndexFromFiles(nil, newfiles)
+	return NewFileIndexFromFiles(stub.Stub{}, newfiles)
 }
 
 func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {

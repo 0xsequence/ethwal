@@ -223,7 +223,7 @@ func TestReader_Read(t *testing.T) {
 	}
 }
 
-func TestReader_NumWALFiles(t *testing.T) {
+func TestReader_FileNum(t *testing.T) {
 	testSetup(t, NewCBOREncoder, nil)
 	defer testTeardown(t)
 
@@ -238,7 +238,29 @@ func TestReader_NumWALFiles(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, 3, rdr.FilesNum())
+	assert.Equal(t, 3, rdr.FileNum())
+
+	require.NoError(t, rdr.Close())
+}
+
+func TestReader_FileIndex(t *testing.T) {
+	testSetup(t, NewCBOREncoder, nil)
+	defer testTeardown(t)
+
+	rdr, err := NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+		NewEncoder: NewCBOREncoder,
+		NewDecoder: NewCBORDecoder,
+	})
+	require.NoError(t, err)
+
+	fileIndex := rdr.FileIndex()
+	require.NotNil(t, fileIndex)
+	assert.Equal(t, 3, len(fileIndex.Files()))
 
 	require.NoError(t, rdr.Close())
 }

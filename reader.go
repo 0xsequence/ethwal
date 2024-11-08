@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/0xsequence/ethwal/storage/stub"
 	"github.com/fatih/structs"
 
 	"github.com/0xsequence/ethwal/storage"
@@ -19,7 +20,8 @@ const firstFileIndex = 0
 const loadIndexFileTimeout = 30 * time.Second
 
 type Reader[T any] interface {
-	FilesNum() int
+	FileNum() int
+	FileIndex() *FileIndex
 	Read(ctx context.Context) (Block[T], error)
 	Seek(ctx context.Context, blockNum uint64) error
 	BlockNum() uint64
@@ -102,11 +104,25 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	}, nil
 }
 
-func (r *reader[T]) FilesNum() int {
+func (r *reader[T]) FileNum() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	return len(r.fileIndex.Files())
+}
+
+func (r *reader[T]) FileIndex() *FileIndex {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	newfiles := make([]*File, len(r.fileIndex.Files()))
+	for index, file := range r.fileIndex.Files() {
+		newfiles[index] = &File{
+			FirstBlockNum: file.FirstBlockNum,
+			LastBlockNum:  file.LastBlockNum,
+		}
+	}
+	return NewFileIndexFromFiles(stub.Stub{}, newfiles)
 }
 
 func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {

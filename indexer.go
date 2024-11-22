@@ -52,7 +52,7 @@ func NewIndexer[T any](ctx context.Context, opt IndexerOptions[T]) (*Indexer[T],
 			return nil, fmt.Errorf("Indexer.NewIndexer: failed to get last block number indexed for %s: %w", index.Name(), err)
 		}
 
-		indexMaps[index.name] = &IndexUpdate{Data: make(map[IndexedValue]*roaring64.Bitmap), LastBlockNum: lastBlockNum}
+		indexMaps[index.name] = &IndexUpdate{BlockBitmap: make(map[IndexedValue]*roaring64.Bitmap), LastBlockNum: lastBlockNum}
 	}
 
 	return &Indexer[T]{
@@ -88,7 +88,7 @@ func (i *Indexer[T]) EstimatedBatchSize() datasize.ByteSize {
 
 	var size datasize.ByteSize = 0
 	for _, indexUpdate := range i.indexUpdates {
-		for _, bm := range indexUpdate.Data {
+		for _, bm := range indexUpdate.BlockBitmap {
 			size += datasize.ByteSize(bm.GetSizeInBytes())
 		}
 	}
@@ -123,7 +123,7 @@ func (i *Indexer[T]) Flush(ctx context.Context) error {
 
 	// clear indexUpdates
 	for _, index := range i.indexes {
-		i.indexUpdates[index.name].Data = make(map[IndexedValue]*roaring64.Bitmap)
+		i.indexUpdates[index.name].BlockBitmap = make(map[IndexedValue]*roaring64.Bitmap)
 	}
 	return nil
 }

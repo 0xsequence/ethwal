@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -189,7 +190,8 @@ func main() {
 
 				var toBlockNumber = c.Uint64(ToBlockNumFlag.Name)
 
-				for b, err := r.Read(c.Context); err == nil; b, err = r.Read(c.Context) {
+				var b ethwal.Block[any]
+				for b, err = r.Read(c.Context); err == nil; b, err = r.Read(c.Context) {
 					if toBlockNumber != 0 && b.Number >= toBlockNumber {
 						break
 					}
@@ -201,7 +203,6 @@ func main() {
 
 					data, err := json.Marshal(b)
 					if err != nil {
-
 						return err
 					}
 
@@ -211,7 +212,7 @@ func main() {
 					}
 				}
 
-				if err != nil && err != io.EOF {
+				if err != nil && !errors.Is(err, io.EOF) {
 					return err
 				}
 
@@ -251,8 +252,9 @@ func main() {
 					return err
 				}
 
+				line := ""
 				in := bufio.NewReader(os.Stdin)
-				for line, err := in.ReadString(byte('\n')); err == nil; line, err = in.ReadString(byte('\n')) {
+				for line, err = in.ReadString(byte('\n')); err == nil; line, err = in.ReadString(byte('\n')) {
 					var b ethwal.Block[any]
 					err = json.Unmarshal([]byte(line), &b)
 					if err != nil {
@@ -270,7 +272,7 @@ func main() {
 					}
 				}
 
-				if err != nil && err != io.EOF {
+				if err != nil && !errors.Is(err, io.EOF) {
 					return err
 				}
 

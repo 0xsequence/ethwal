@@ -32,7 +32,7 @@ func NewCBOREncoder(w io.Writer) Encoder {
 
 func NewCBORDecoder(r io.Reader) Decoder {
 	opt := cbor.DecOptions{
-		MaxNestedLevels: 256, // Set the desired maximum nesting depth
+		MaxNestedLevels: 1024, // Set the desired maximum nesting depth
 	}
 	mode, _ := opt.DecMode()
 	return mode.NewDecoder(r)

@@ -83,6 +83,50 @@ func main() {
 
 			return nil
 		},
+		Commands: []*cli.Command{
+			{
+				Name: "file_for_block",
+				Args: true,
+				Action: func(c *cli.Context) error {
+					var fs storage.FS = local.NewLocalFS("./")
+					if bucket := c.String(GoogleCloudBucket.Name); bucket != "" {
+						fs = gcloud.NewGCloudFS(bucket, nil)
+					}
+
+					dataset := ethwal.Dataset{
+						Name:    c.String(DatasetNameFlag.Name),
+						Version: c.String(DatasetVersion.Name),
+						Path:    c.String(DatasetPathFlag.Name),
+					}
+
+					// mount fs to dataset path
+					fs = storage.NewPrefixWrapper(fs, dataset.FullPath())
+
+					walFiles, err := ethwal.ListFiles(c.Context, fs)
+					if err != nil {
+						return err
+					}
+
+					var blockNum uint64
+					if args := c.Args(); args.Len() == 1 {
+						blockNumStr := args.Get(0)
+						if _, err := fmt.Sscanf(blockNumStr, "%d", &blockNum); err != nil {
+							return fmt.Errorf("invalid block number")
+						}
+					} else {
+						return fmt.Errorf("invalid number of arguments")
+					}
+
+					for _, walFile := range walFiles {
+						if blockNum >= walFile.FirstBlockNum && blockNum <= walFile.LastBlockNum {
+							fmt.Println(walFile.Path())
+							return nil
+						}
+					}
+					return nil
+				},
+			},
+		},
 	}
 
 	if err := app.Run(os.Args); err != nil {

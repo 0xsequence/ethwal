@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/0xsequence/ethwal"
 	"github.com/0xsequence/ethwal/storage"
@@ -65,6 +69,12 @@ func main() {
 				dstFs = storage.NewPrefixWrapper(dstFs, c.String(DestinationDatasetPathFlag.Name))
 			}
 
+			// app context
+			ctx, cancel := context.WithCancel(c.Context)
+			defer cancel()
+
+			go handleSignal(ctx, cancel, 30*time.Second)
+
 			errorGroup, gCtx := errgroup.WithContext(c.Context)
 
 			fileList, err := ethwal.ListFiles(c.Context, srcFs)
@@ -72,6 +82,7 @@ func main() {
 				return fmt.Errorf("unable to list ethwal files: %w", err)
 			}
 
+			fmt.Println("Copying ", len(fileList), " files")
 			var filesChan = make(chan *ethwal.File, c.Int(ConcurrentWorkers.Name))
 			errorGroup.Go(func() error {
 				defer close(filesChan)
@@ -87,7 +98,14 @@ func main() {
 
 			for i := 0; i < c.Int(ConcurrentWorkers.Name); i++ {
 				errorGroup.Go(func() error {
+				CopyLoop:
 					for file := range filesChan {
+						select {
+						case <-gCtx.Done():
+							break CopyLoop
+						default:
+						}
+
 						if file.Exist(gCtx, dstFs) {
 							fmt.Printf("File[%d-%d]: %s already exists, skipping\n", file.FirstBlockNum, file.LastBlockNum, file.Path())
 							continue
@@ -145,5 +163,29 @@ func main() {
 
 	if err := app.Run(os.Args); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
+	}
+}
+
+func handleSignal(ctx context.Context, cancel context.CancelFunc, shutDownTimeout time.Duration) {
+	var osSigChan = make(chan os.Signal, 1)
+	signal.Notify(osSigChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	select {
+	case <-osSigChan:
+		// wait for Interrupt signal
+		cancel()
+	case <-ctx.Done():
+		// terminate if app finished
+		return
+	}
+
+	select {
+	case <-ctx.Done():
+		// received signal wait for shutdown
+		return
+	case <-time.After(shutDownTimeout):
+		// terminate if app did not finish in time
+		fmt.Printf("failed to shutdown in %s\n", shutDownTimeout.String())
+		os.Exit(1)
 	}
 }

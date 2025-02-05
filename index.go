@@ -25,25 +25,6 @@ const IndexAllDataIndexes = math.MaxUint16
 // The function should return a map of index values to positions in the block.
 type IndexFunction[T any] func(block Block[T]) (toIndex bool, indexValueMap map[IndexedValue][]uint16, err error)
 
-// IndexCompoundID is a compound ID for an index. It is a combination of the block number and the index within the block.
-type IndexCompoundID uint64
-
-func NewIndexCompoundID(blockNum uint64, dataIndex uint16) IndexCompoundID {
-	return IndexCompoundID(uint64(blockNum<<16 | uint64(dataIndex)))
-}
-
-func (i IndexCompoundID) BlockNumber() uint64 {
-	return (uint64(i) & 0xFFFFFFFFFFFF0000) >> 16
-}
-
-func (i IndexCompoundID) DataIndex() uint16 {
-	return uint16(i) & 0xFFFF
-}
-
-func (i IndexCompoundID) Split() (uint64, uint16) {
-	return i.BlockNumber(), i.DataIndex()
-}
-
 // IndexName is the name of an index.
 type IndexName string
 
@@ -56,16 +37,17 @@ type IndexedValue string
 
 // IndexUpdate is a map of indexed values and their corresponding bitmaps.
 type IndexUpdate struct {
-	Data         map[IndexedValue]*roaring64.Bitmap
-	LastBlockNum uint64
+	BlockBitmap     map[IndexedValue]*roaring64.Bitmap
+	DataIndexBitmap map[IndexedValue]*roaring64.Bitmap
+	LastBlockNum    uint64
 }
 
 func (u *IndexUpdate) Merge(update *IndexUpdate) {
-	for indexValue, bm := range update.Data {
-		if _, ok := u.Data[indexValue]; !ok {
-			u.Data[indexValue] = roaring64.New()
+	for indexValue, bm := range update.BlockBitmap {
+		if _, ok := u.BlockBitmap[indexValue]; !ok {
+			u.BlockBitmap[indexValue] = roaring64.New()
 		}
-		u.Data[indexValue].Or(bm)
+		u.BlockBitmap[indexValue].Or(bm)
 	}
 
 	if u.LastBlockNum < update.LastBlockNum {
@@ -109,13 +91,15 @@ func (i *Index[T]) Fetch(ctx context.Context, fs storage.FS, indexValue IndexedV
 }
 
 func (i *Index[T]) IndexBlock(ctx context.Context, fs storage.FS, block Block[T]) (*IndexUpdate, error) {
-	numBlocksIndexed, err := i.LastBlockNumIndexed(ctx, fs)
-	if err != nil {
-		return nil, fmt.Errorf("unexpected: failed to get number of blocks indexed: %w", err)
-	}
+	if fs != nil {
+		numBlocksIndexed, err := i.LastBlockNumIndexed(ctx, fs)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected: failed to get number of blocks indexed: %w", err)
+		}
 
-	if block.Number <= numBlocksIndexed {
-		return nil, nil
+		if block.Number <= numBlocksIndexed {
+			return nil, nil
+		}
 	}
 
 	toIndex, indexValueMap, err := i.indexFunc(block)
@@ -126,31 +110,36 @@ func (i *Index[T]) IndexBlock(ctx context.Context, fs storage.FS, block Block[T]
 		return &IndexUpdate{LastBlockNum: block.Number}, nil
 	}
 
-	indexValueCompoundMap := make(map[IndexedValue][]IndexCompoundID)
-	for indexValue, positions := range indexValueMap {
-		if _, ok := indexValueMap[indexValue]; !ok {
-			indexValueCompoundMap[indexValue] = make([]IndexCompoundID, 0)
-		}
-		for _, pos := range positions {
-			indexValueCompoundMap[indexValue] = append(indexValueCompoundMap[indexValue], NewIndexCompoundID(block.Number, pos))
+	indexValueCompoundMap := make(map[IndexedValue]uint64)
+	for indexValue, _ := range indexValueMap {
+		if _, ok := indexValueCompoundMap[indexValue]; !ok {
+			indexValueCompoundMap[indexValue] = block.Number
 		}
 	}
 
 	indexUpdate := &IndexUpdate{
-		Data:         make(map[IndexedValue]*roaring64.Bitmap),
-		LastBlockNum: block.Number,
+		BlockBitmap:     make(map[IndexedValue]*roaring64.Bitmap),
+		DataIndexBitmap: make(map[IndexedValue]*roaring64.Bitmap),
+		LastBlockNum:    block.Number,
 	}
-	for indexValue, indexIDs := range indexValueCompoundMap {
-		bm, ok := indexUpdate.Data[indexValue]
+	for indexValue, blockNumber := range indexValueCompoundMap {
+		bm, ok := indexUpdate.BlockBitmap[indexValue]
 		if !ok {
 			bm = roaring64.New()
-			indexUpdate.Data[indexValue] = bm
+			indexUpdate.BlockBitmap[indexValue] = bm
 		}
+		bm.Add(blockNumber)
 
-		for _, indexID := range indexIDs {
-			bm.Add(uint64(indexID))
+		dataIndexBM, ok := indexUpdate.DataIndexBitmap[indexValue]
+		if !ok {
+			dataIndexBM = roaring64.New()
+			indexUpdate.DataIndexBitmap[indexValue] = dataIndexBM
+		}
+		for _, dataIndex := range indexValueMap[indexValue] {
+			dataIndexBM.Add(uint64(dataIndex))
 		}
 	}
+
 	return indexUpdate, nil
 }
 
@@ -163,7 +152,7 @@ func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexUpdate *IndexU
 		return nil
 	}
 
-	for indexValue, bmUpdate := range indexUpdate.Data {
+	for indexValue, bmUpdate := range indexUpdate.BlockBitmap {
 		if bmUpdate.IsEmpty() {
 			continue
 		}
@@ -269,4 +258,48 @@ func indexPath(index string, indexValue string) string {
 		binary.BigEndian.Uint64(hash[16:24])%NumberOfDirectoriesPerLevel, // level2
 		fmt.Sprintf("%s.idx", indexValue),                                // filename
 	)
+}
+
+type IndexIterator struct {
+	bm   *roaring64.Bitmap
+	iter roaring64.IntIterable64
+}
+
+func NewIndexIterator(bitmap *roaring64.Bitmap) *IndexIterator {
+	return &IndexIterator{bm: bitmap, iter: bitmap.Iterator()}
+}
+
+func (i *IndexIterator) First() bool {
+	i.iter = i.bm.Iterator()
+	if i.iter.HasNext() {
+		return true
+	}
+	return false
+}
+
+func (i *IndexIterator) Last() bool {
+	i.iter = i.bm.ReverseIterator()
+	if i.iter.HasNext() {
+		return true
+	}
+	return false
+}
+
+func (i *IndexIterator) HasNext() bool {
+	return i.iter.HasNext()
+}
+
+func (i *IndexIterator) Next() uint64 {
+	return i.iter.Next()
+}
+
+func (i *IndexIterator) Peek() uint64 {
+	if peekable, ok := i.iter.(roaring64.IntPeekable64); ok {
+		return peekable.PeekNext()
+	}
+	return math.MaxUint64
+}
+
+func (i *IndexIterator) Bitmap() *roaring64.Bitmap {
+	return i.bm
 }

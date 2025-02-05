@@ -5,27 +5,29 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"reflect"
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
 )
 
-type Filter interface {
-	Eval(ctx context.Context) FilterIterator
+// Filter is an interface that defines the methods to filter blocks
+// based on the index data.
+type Filter[T any] interface {
+	// Filter blocks inner data based on the filter criteria.
+	Filter(block Block[T]) Block[T]
+
+	// IndexIterator returns the iterator for the filter.
+	IndexIterator(ctx context.Context) *IndexIterator
+
+	bitmap(block Block[T]) *roaring64.Bitmap
 }
 
-type FilterIterator interface {
-	HasNext() bool
-	Next() (uint64, uint16)
-	Peek() (uint64, uint16)
-	Bitmap() *roaring64.Bitmap
-}
-
-type FilterBuilder interface {
-	And(filters ...Filter) Filter
-	Or(filters ...Filter) Filter
-	Eq(index string, key string) Filter
+type FilterBuilder[T any] interface {
+	And(filters ...Filter[T]) Filter[T]
+	Or(filters ...Filter[T]) Filter[T]
+	Eq(index string, key string) Filter[T]
 }
 
 type FilterBuilderOptions[T any] struct {
@@ -47,7 +49,7 @@ type filterBuilder[T any] struct {
 	fs      storage.FS
 }
 
-func NewFilterBuilder[T any](opt FilterBuilderOptions[T]) (FilterBuilder, error) {
+func NewFilterBuilder[T any](opt FilterBuilderOptions[T]) (FilterBuilder[T], error) {
 	// apply default options on uninitialized fields
 	opt = opt.WithDefaults()
 
@@ -60,29 +62,54 @@ func NewFilterBuilder[T any](opt FilterBuilderOptions[T]) (FilterBuilder, error)
 	}, nil
 }
 
-type filter struct {
-	resultSet func(ctx context.Context) *roaring64.Bitmap
+type filter[T any] struct {
+	blockBitmap         func(ctx context.Context) *roaring64.Bitmap
+	dataIndexBitmapFunc func(block Block[T]) *roaring64.Bitmap
 }
 
-func (c *filter) Eval(ctx context.Context) FilterIterator {
-	if c.resultSet == nil {
-		c.resultSet = func(ctx context.Context) *roaring64.Bitmap {
+func (c *filter[T]) IndexIterator(ctx context.Context) *IndexIterator {
+	if c.blockBitmap == nil {
+		c.blockBitmap = func(ctx context.Context) *roaring64.Bitmap {
 			return roaring64.New()
 		}
 	}
-	return newFilterIterator(c.resultSet(ctx))
+	return NewIndexIterator(c.blockBitmap(ctx))
 }
 
-func (c *filterBuilder[T]) And(filters ...Filter) Filter {
-	return &filter{
-		resultSet: func(ctx context.Context) *roaring64.Bitmap {
+func (c *filter[T]) Filter(block Block[T]) Block[T] {
+	dataIndexesBitmap := c.dataIndexBitmapFunc(block)
+	dataIndexes := dataIndexesBitmap.ToArray()
+	if len(dataIndexes) == 1 && dataIndexes[0] == IndexAllDataIndexes {
+		return block
+	}
+
+	if dType := reflect.TypeOf(block.Data); dType.Kind() == reflect.Slice || dType.Kind() == reflect.Array {
+		newData := reflect.Indirect(reflect.New(dType))
+		for _, dataIndex := range dataIndexes {
+			newData = reflect.Append(newData, reflect.ValueOf(block.Data).Index(int(dataIndex)))
+		}
+		block.Data = newData.Interface().(T)
+	}
+	return block
+}
+
+func (c *filter[T]) bitmap(block Block[T]) *roaring64.Bitmap {
+	if c.dataIndexBitmapFunc == nil {
+		return roaring64.New()
+	}
+	return c.dataIndexBitmapFunc(block)
+}
+
+func (c *filterBuilder[T]) And(conds ...Filter[T]) Filter[T] {
+	return &filter[T]{
+		blockBitmap: func(ctx context.Context) *roaring64.Bitmap {
 			var bmap *roaring64.Bitmap
-			for _, filter := range filters {
-				if filter == nil {
+			for _, cond := range conds {
+				if cond == nil {
 					continue
 				}
 
-				iter := filter.Eval(ctx)
+				iter := cond.IndexIterator(ctx)
 				if bmap == nil {
 					bmap = iter.Bitmap().Clone()
 				} else {
@@ -91,19 +118,31 @@ func (c *filterBuilder[T]) And(filters ...Filter) Filter {
 			}
 			return bmap
 		},
+		dataIndexBitmapFunc: func(block Block[T]) *roaring64.Bitmap {
+			var bmap *roaring64.Bitmap
+			for _, cond := range conds {
+				condBitmap := cond.bitmap(block)
+				if bmap == nil {
+					bmap = condBitmap.Clone()
+				} else {
+					bmap.And(condBitmap)
+				}
+			}
+			return bmap
+		},
 	}
 }
 
-func (c *filterBuilder[T]) Or(filters ...Filter) Filter {
-	return &filter{
-		resultSet: func(ctx context.Context) *roaring64.Bitmap {
+func (c *filterBuilder[T]) Or(conds ...Filter[T]) Filter[T] {
+	return &filter[T]{
+		blockBitmap: func(ctx context.Context) *roaring64.Bitmap {
 			var bmap *roaring64.Bitmap
-			for _, filter := range filters {
-				if filter == nil {
+			for _, cond := range conds {
+				if cond == nil {
 					continue
 				}
 
-				iter := filter.Eval(ctx)
+				iter := cond.IndexIterator(ctx)
 				if bmap == nil {
 					bmap = iter.Bitmap().Clone()
 				} else {
@@ -112,13 +151,24 @@ func (c *filterBuilder[T]) Or(filters ...Filter) Filter {
 			}
 			return bmap
 		},
+		dataIndexBitmapFunc: func(block Block[T]) *roaring64.Bitmap {
+			var bmap *roaring64.Bitmap
+			for _, cond := range conds {
+				condBitmap := cond.bitmap(block)
+				if bmap == nil {
+					bmap = condBitmap.Clone()
+				} else {
+					bmap.Or(condBitmap)
+				}
+			}
+			return bmap
+		},
 	}
 }
 
-func (c *filterBuilder[T]) Eq(index string, key string) Filter {
-
-	return &filter{
-		resultSet: func(ctx context.Context) *roaring64.Bitmap {
+func (c *filterBuilder[T]) Eq(index string, key string) Filter[T] {
+	return &filter[T]{
+		blockBitmap: func(ctx context.Context) *roaring64.Bitmap {
 			// fetch the index file and include it in the result set
 			index_ := IndexName(index).Normalize()
 			idx, ok := c.indexes[index_]
@@ -132,36 +182,19 @@ func (c *filterBuilder[T]) Eq(index string, key string) Filter {
 			}
 			return bitmap
 		},
+		dataIndexBitmapFunc: func(block Block[T]) *roaring64.Bitmap {
+			index_ := IndexName(index).Normalize()
+			idx, ok := c.indexes[index_]
+			if !ok {
+				return roaring64.New()
+			}
+
+			indexUpdate, _ := idx.IndexBlock(context.Background(), nil, block)
+			bitmap, ok := indexUpdate.DataIndexBitmap[IndexedValue(key)]
+			if !ok {
+				return roaring64.New()
+			}
+			return bitmap
+		},
 	}
-}
-
-type filterIterator struct {
-	iter   roaring64.IntPeekable64
-	bitmap *roaring64.Bitmap
-}
-
-func newFilterIterator(bmap *roaring64.Bitmap) FilterIterator {
-	return &filterIterator{
-		iter:   bmap.Iterator(),
-		bitmap: bmap,
-	}
-}
-
-func (f *filterIterator) HasNext() bool {
-	return f.iter.HasNext()
-}
-
-func (f *filterIterator) Next() (uint64, uint16) {
-	// TODO: how to handle if there's no next?
-	val := f.iter.Next()
-	return IndexCompoundID(val).Split()
-}
-
-func (f *filterIterator) Peek() (uint64, uint16) {
-	val := f.iter.PeekNext()
-	return IndexCompoundID(val).Split()
-}
-
-func (f *filterIterator) Bitmap() *roaring64.Bitmap {
-	return f.bitmap
 }

@@ -3,19 +3,18 @@ package ethwal
 import (
 	"context"
 	"io"
-	"reflect"
 )
 
 type readerWithFilter[T any] struct {
 	lastBlockNum uint64
 	reader       Reader[T]
-	filter       Filter
-	iterator     FilterIterator
+	filter       Filter[T]
+	iterator     *IndexIterator
 }
 
 var _ Reader[any] = (*readerWithFilter[any])(nil)
 
-func NewReaderWithFilter[T any](reader Reader[T], filter Filter) (Reader[T], error) {
+func NewReaderWithFilter[T any](reader Reader[T], filter Filter[T]) (Reader[T], error) {
 	return &readerWithFilter[T]{
 		reader: reader,
 		filter: filter,
@@ -31,9 +30,9 @@ func (c *readerWithFilter[T]) FileIndex() *FileIndex {
 }
 
 func (c *readerWithFilter[T]) Seek(ctx context.Context, blockNum uint64) error {
-	iter := c.filter.Eval(ctx)
+	iter := c.filter.IndexIterator(ctx)
 	for iter.HasNext() {
-		nextBlock, _ := iter.Peek()
+		nextBlock := iter.Peek()
 		if nextBlock >= blockNum {
 			break
 		}
@@ -51,7 +50,7 @@ func (c *readerWithFilter[T]) BlockNum() uint64 {
 func (c *readerWithFilter[T]) Read(ctx context.Context) (Block[T], error) {
 	// Lazy init iterator
 	if c.iterator == nil {
-		c.iterator = c.filter.Eval(ctx)
+		c.iterator = c.filter.IndexIterator(ctx)
 	}
 
 	// Check if there are no more blocks to read
@@ -60,19 +59,7 @@ func (c *readerWithFilter[T]) Read(ctx context.Context) (Block[T], error) {
 	}
 
 	// Collect all data indexes for the block
-	blockNum, dataIndex := c.iterator.Next()
-	dataIndexes := []uint16{dataIndex}
-
-	doFilter := dataIndex != IndexAllDataIndexes
-	for c.iterator.HasNext() {
-		nextBlockNum, nextDataIndex := c.iterator.Peek()
-		if blockNum != nextBlockNum {
-			break
-		}
-
-		_, _ = c.iterator.Next()
-		dataIndexes = append(dataIndexes, nextDataIndex)
-	}
+	blockNum := c.iterator.Next()
 
 	// Seek to the block
 	err := c.reader.Seek(ctx, blockNum)
@@ -85,14 +72,8 @@ func (c *readerWithFilter[T]) Read(ctx context.Context) (Block[T], error) {
 		return Block[T]{}, err
 	}
 
-	// Filter the block data
-	if dType := reflect.TypeOf(block.Data); doFilter && (dType.Kind() == reflect.Slice || dType.Kind() == reflect.Array) {
-		newData := reflect.Indirect(reflect.New(dType))
-		for _, dataIndex := range dataIndexes {
-			newData = reflect.Append(newData, reflect.ValueOf(block.Data).Index(int(dataIndex)))
-		}
-		block.Data = newData.Interface().(T)
-	}
+	// Filter
+	block = c.filter.Filter(block)
 
 	c.lastBlockNum = blockNum
 	return block, nil

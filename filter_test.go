@@ -182,7 +182,7 @@ func indexOnlyEvenBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[In
 	}
 
 	if toIndex {
-		indexValueMap["true"] = []uint16{math.MaxUint16}
+		indexValueMap["true"] = []uint16{IndexAllDataIndexes}
 	}
 
 	return
@@ -202,7 +202,7 @@ func indexOnlyOddBlocks(block Block[[]int]) (toIndex bool, indexValueMap map[Ind
 	}
 
 	if toIndex {
-		indexValueMap["true"] = []uint16{math.MaxUint16}
+		indexValueMap["true"] = []uint16{IndexAllDataIndexes}
 	}
 
 	return
@@ -251,12 +251,6 @@ func indexNone(block Block[[]int]) (toIndex bool, indexValueMap map[IndexedValue
 	return false, nil, nil
 }
 
-func TestMaxMagicCompoundID(t *testing.T) {
-	id := NewIndexCompoundID(uint64(math.Exp2(48)-1), math.MaxUint16)
-	assert.Equal(t, uint64(math.Exp2(48)-1), id.BlockNumber())
-	assert.Equal(t, uint16(math.MaxUint16), id.DataIndex())
-}
-
 func TestIntMixFiltering(t *testing.T) {
 	_, indexes, _, cleanup, err := setupMockData(generateMixedIntIndexes, generateMixedIntBlocks)
 	assert.NoError(t, err)
@@ -284,7 +278,7 @@ func TestIntMixFiltering(t *testing.T) {
 		"555",
 		"111",
 	}
-	var numberFilter Filter
+	var numberFilter Filter[[]int]
 	for _, number := range numbersIdxs {
 		if numberFilter == nil {
 			numberFilter = f.Eq("all", number)
@@ -293,30 +287,27 @@ func TestIntMixFiltering(t *testing.T) {
 		}
 	}
 
-	onlyEvenResults := onlyEvenFilter.Eval(context.Background())
+	onlyEvenResults := onlyEvenFilter.IndexIterator(context.Background())
 	assert.Len(t, onlyEvenResults.Bitmap().ToArray(), 20)
-	for _, id := range onlyEvenResults.Bitmap().ToArray() {
-		block, _ := IndexCompoundID(id).Split()
+	for _, block := range onlyEvenResults.Bitmap().ToArray() {
 		assert.True(t, block <= 20)
 	}
 
-	onlyOddResults := onlyOddFilter.Eval(context.Background())
+	onlyOddResults := onlyOddFilter.IndexIterator(context.Background())
 	assert.Len(t, onlyOddResults.Bitmap().ToArray(), 20+20)
-	for _, id := range onlyOddResults.Bitmap().ToArray() {
-		block, _ := IndexCompoundID(id).Split()
+	for _, block := range onlyOddResults.Bitmap().ToArray() {
 		assert.True(t, (block > 20 && block < 41) || (block > 50 && block < 71))
 	}
 
-	numberAllResults := numberFilter.Eval(context.Background())
-	// 20*20
-	assert.Len(t, numberAllResults.Bitmap().ToArray(), 400)
-	for _, id := range numberAllResults.Bitmap().ToArray() {
-		block, _ := IndexCompoundID(id).Split()
+	numberAllResults := numberFilter.IndexIterator(context.Background())
+	// 20
+	assert.Len(t, numberAllResults.Bitmap().ToArray(), 20)
+	for _, block := range numberAllResults.Bitmap().ToArray() {
 		assert.True(t, block > 50 && block < 71)
 	}
 
 	allNumberAndOdd := f.And(numberFilter, oddFilter)
-	allNumberOddResults := allNumberAndOdd.Eval(context.Background())
+	allNumberOddResults := allNumberAndOdd.IndexIterator(context.Background())
 	assert.ElementsMatch(t, numberAllResults.Bitmap().ToArray(), allNumberOddResults.Bitmap().ToArray())
 }
 
@@ -331,20 +322,20 @@ func TestFiltering(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, f)
-	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).Eval(context.Background())
+	result := f.Or(f.And(f.Eq("all", "1"), f.Eq("all", "2")), f.Eq("all", "3")).IndexIterator(context.Background())
 	// result should contain block 1, 2, 3
 	assert.Len(t, result.Bitmap().ToArray(), 3)
-	block, _ := result.Next()
+	block := result.Next()
 	assert.Equal(t, uint64(1), block)
-	block, _ = result.Next()
+	block = result.Next()
 	assert.Equal(t, uint64(2), block)
-	block, _ = result.Next()
+	block = result.Next()
 	assert.Equal(t, uint64(3), block)
 
-	result = f.And(f.Eq("all", "1"), f.Eq("all", "2")).Eval(context.Background())
+	result = f.And(f.Eq("all", "1"), f.Eq("all", "2")).IndexIterator(context.Background())
 	// result should contain block 1
 	assert.Len(t, result.Bitmap().ToArray(), 1)
-	block, _ = result.Next()
+	block = result.Next()
 	assert.Equal(t, uint64(1), block)
 }
 

@@ -9,7 +9,7 @@ import (
 
 type BlockHashGetter func(ctx context.Context, blockNum uint64) (common.Hash, error)
 
-func BlockGetterFromReader[T any](options Options) BlockHashGetter {
+func BlockHashGetterFromReader[T any](options Options) BlockHashGetter {
 	return func(ctx context.Context, blockNum uint64) (common.Hash, error) {
 		reader, err := NewReader[T](options)
 		if err != nil {

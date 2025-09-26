@@ -433,7 +433,7 @@ func TestBlockGetterFromReader(t *testing.T) {
 		NewDecoder: NewJSONDecoder,
 	}
 
-	getter := BlockGetterFromReader[int](options)
+	getter := BlockHashGetterFromReader[int](options)
 	require.NotNil(t, getter)
 
 	// Test that calling it with invalid block returns error

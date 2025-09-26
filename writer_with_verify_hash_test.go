@@ -248,7 +248,8 @@ func TestWriterWithVerifyHash_Write_BlockHashGetterError(t *testing.T) {
 	err := writer.Write(ctx, block)
 
 	require.Error(t, err)
-	assert.Equal(t, getterError, err)
+	assert.Contains(t, err.Error(), "failed to get block hash")
+	assert.ErrorIs(t, err, getterError)
 
 	mockGetter.AssertExpectations(t)
 	mockWriter.AssertNotCalled(t, "Write") // Should not call write if getter fails
@@ -277,7 +278,8 @@ func TestWriterWithVerifyHash_Write_UnderlyingWriterError(t *testing.T) {
 	err := writer.Write(ctx, block)
 
 	require.Error(t, err)
-	assert.Equal(t, writeError, err)
+	assert.Contains(t, err.Error(), "failed to write block")
+	assert.ErrorIs(t, err, writeError)
 
 	// Check that prevHash is reset to empty on write error
 	writerImpl := writer.(*writerWithVerifyHash[int])

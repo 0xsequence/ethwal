@@ -49,7 +49,7 @@ func (w *writerWithVerifyHash[T]) Write(ctx context.Context, b Block[T]) error {
 	if w.prevHash == (common.Hash{}) && b.Number > 1 {
 		w.prevHash, err = w.blockHashGetter(ctx, b.Number-1)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get block hash: %w", err)
 		}
 	}
 
@@ -62,7 +62,7 @@ func (w *writerWithVerifyHash[T]) Write(ctx context.Context, b Block[T]) error {
 	err = w.Writer.Write(ctx, b)
 	if err != nil {
 		w.prevHash = common.Hash{}
-		return err
+		return fmt.Errorf("failed to write block: %w", err)
 	}
 
 	w.prevHash = b.Hash

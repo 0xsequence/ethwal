@@ -442,3 +442,113 @@ func TestBlockGetterFromReader(t *testing.T) {
 	_, err := getter(context.Background(), 99)
 	require.Error(t, err)
 }
+
+func TestBlockHashGetterFromReader_ReturnsCorrectHash(t *testing.T) {
+	testSetup(t, NewJSONEncoder, nil)
+	defer testTeardown(t)
+
+	options := Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+		NewEncoder: NewJSONEncoder,
+		NewDecoder: NewJSONDecoder,
+	}
+
+	ctx := context.Background()
+
+	// Create the block hash getter from reader
+	getter := BlockHashGetterFromReader[int](options)
+	require.NotNil(t, getter)
+
+	// Define expected blocks and their hashes (matches testSetup)
+	expectedBlocks := []struct {
+		blockNum uint64
+		hash     common.Hash
+	}{
+		{1, common.BytesToHash([]byte{0x01})},
+		{2, common.BytesToHash([]byte{0x02})},
+		{3, common.BytesToHash([]byte{0x03})},
+		{4, common.BytesToHash([]byte{0x04})},
+		{5, common.BytesToHash([]byte{0x05})},
+		{6, common.BytesToHash([]byte{0x06})},
+		{7, common.BytesToHash([]byte{0x07})},
+		{8, common.BytesToHash([]byte{0x08})},
+		{11, common.BytesToHash([]byte{0x0b})},
+		{12, common.BytesToHash([]byte{0x0c})},
+	}
+
+	// Test that the getter returns the correct hash for each block
+	for _, expected := range expectedBlocks {
+		hash, err := getter(ctx, expected.blockNum)
+		require.NoError(t, err, "Failed to get hash for block %d", expected.blockNum)
+		assert.Equal(t, expected.hash, hash,
+			"Hash mismatch for block %d: expected %s, got %s",
+			expected.blockNum, expected.hash.String(), hash.String())
+	}
+}
+
+func TestBlockHashGetterFromReader_NonExistentBlock(t *testing.T) {
+	testSetup(t, NewJSONEncoder, nil)
+	defer testTeardown(t)
+
+	options := Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+		NewEncoder: NewJSONEncoder,
+		NewDecoder: NewJSONDecoder,
+	}
+
+	ctx := context.Background()
+	getter := BlockHashGetterFromReader[int](options)
+	require.NotNil(t, getter)
+
+	// Test a block that definitely doesn't exist (way beyond the test data range)
+	hash, err := getter(ctx, 1000000)
+	require.Error(t, err, "Expected error for non-existent block")
+	assert.Equal(t, common.Hash{}, hash, "Hash should be empty for non-existent block")
+}
+
+func TestBlockHashGetterFromReader_WithCompression(t *testing.T) {
+	testSetup(t, NewJSONEncoder, NewZSTDCompressor)
+	defer testTeardown(t)
+
+	options := Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+		NewEncoder:      NewJSONEncoder,
+		NewDecoder:      NewJSONDecoder,
+		NewCompressor:   NewZSTDCompressor,
+		NewDecompressor: NewZSTDDecompressor,
+	}
+
+	ctx := context.Background()
+	getter := BlockHashGetterFromReader[int](options)
+	require.NotNil(t, getter)
+
+	// Test a few blocks to ensure compression doesn't affect hash retrieval
+	testCases := []struct {
+		blockNum uint64
+		hash     common.Hash
+	}{
+		{1, common.BytesToHash([]byte{0x01})},
+		{5, common.BytesToHash([]byte{0x05})},
+		{11, common.BytesToHash([]byte{0x0b})},
+	}
+
+	for _, tc := range testCases {
+		hash, err := getter(ctx, tc.blockNum)
+		require.NoError(t, err, "Failed to get hash for block %d with compression", tc.blockNum)
+		assert.Equal(t, tc.hash, hash,
+			"Hash mismatch for block %d with compression: expected %s, got %s",
+			tc.blockNum, tc.hash.String(), hash.String())
+	}
+}

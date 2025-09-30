@@ -17,7 +17,7 @@ func BlockHashGetterFromReader[T any](options Options) BlockHashGetter {
 		}
 		defer reader.Close()
 
-		err = reader.Seek(ctx, blockNum-1)
+		err = reader.Seek(ctx, blockNum)
 		if err != nil {
 			return common.Hash{}, fmt.Errorf("failed to seek to block %d: %w", blockNum, err)
 		}

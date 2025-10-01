@@ -97,10 +97,11 @@ func NewReader[T any](opt Options) (Reader[T], error) {
 	}
 
 	return &reader[T]{
-		options:   opt,
-		path:      datasetPath,
-		fs:        fs,
-		fileIndex: fileIndex,
+		options:      opt,
+		path:         datasetPath,
+		fs:           fs,
+		fileIndex:    fileIndex,
+		lastBlockNum: uint64(math.MaxUint64),
 	}, nil
 }
 

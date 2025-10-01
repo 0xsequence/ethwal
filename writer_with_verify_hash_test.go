@@ -649,3 +649,107 @@ func TestWriterWithVerifyHash_Write_BlockZero(t *testing.T) {
 
 	mockGetter.AssertNotCalled(t, "GetHash")
 }
+
+func TestBlockHashGetterFromReader(t *testing.T) {
+	defer testTeardown(t)
+
+	options := Options{
+		Dataset: Dataset{
+			Name:    "test-block-zero",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+		NewEncoder:      NewJSONEncoder,
+		NewDecoder:      NewJSONDecoder,
+		FileRollOnClose: true,
+	}
+
+	w, err := NewWriter[int](options)
+	require.NoError(t, err)
+
+	verifyWriter := NewWriterWithVerifyHash[int](w, BlockHashGetterFromReader[int](options))
+
+	block0 := Block[int]{
+		Hash:   common.BytesToHash([]byte{0x01}),
+		Parent: common.Hash{0x00},
+		Number: 0,
+		Data:   100,
+	}
+
+	err = verifyWriter.Write(context.Background(), block0)
+	require.NoError(t, err)
+
+	block1 := Block[int]{
+		Hash:   common.BytesToHash([]byte{0x02}),
+		Parent: block0.Hash,
+		Number: 1,
+		Data:   101,
+	}
+
+	err = verifyWriter.Write(context.Background(), block1)
+	require.NoError(t, err)
+
+	err = w.RollFile(context.Background())
+	require.NoError(t, err)
+
+	err = w.Close(context.Background())
+	require.NoError(t, err)
+
+	r, err := NewReader[int](options)
+	require.NoError(t, err)
+
+	readBlock0, err := r.Read(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, block0.Hash, readBlock0.Hash)
+	assert.Equal(t, block0.Data, readBlock0.Data)
+
+	readBlock1, err := r.Read(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, block1.Hash, readBlock1.Hash)
+	assert.Equal(t, block1.Data, readBlock1.Data)
+
+	// continue writing with verify writer
+	w, err = NewWriter[int](options)
+	require.NoError(t, err)
+
+	verifyWriter = NewWriterWithVerifyHash[int](w, BlockHashGetterFromReader[int](options))
+
+	block3 := Block[int]{
+		Hash:   common.BytesToHash([]byte{0x03}),
+		Parent: block1.Hash,
+		Number: 2,
+		Data:   103,
+	}
+
+	err = verifyWriter.Write(context.Background(), block3)
+	require.NoError(t, err)
+
+	block4 := Block[int]{
+		Hash:   common.BytesToHash([]byte{0x04}),
+		Parent: block3.Hash,
+		Number: 3,
+		Data:   104,
+	}
+
+	err = verifyWriter.Write(context.Background(), block4)
+	require.NoError(t, err)
+
+	err = w.RollFile(context.Background())
+	require.NoError(t, err)
+
+	err = w.Close(context.Background())
+	require.NoError(t, err)
+
+	r, err = NewReader[int](options)
+	require.NoError(t, err)
+
+	var blocks = []Block[int]{block0, block1, block3, block4}
+	for _, block := range blocks {
+		readBlock, err := r.Read(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, block.Hash, readBlock.Hash)
+		assert.Equal(t, block.Data, readBlock.Data)
+	}
+
+	require.NoError(t, r.Close())
+}

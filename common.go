@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path"
 	"sort"
@@ -21,6 +22,8 @@ import (
 	"github.com/0xsequence/ethwal/storage/local"
 	"github.com/c2h5oh/datasize"
 )
+
+const NoBlockNum = uint64(math.MaxUint64)
 
 type Dataset struct {
 	Name      string

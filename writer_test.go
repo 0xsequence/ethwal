@@ -16,6 +16,12 @@ import (
 func TestWriter_Write(t *testing.T) {
 	blocksFile := Blocks[int]{
 		{
+			Hash:   common.BytesToHash([]byte{0x00}),
+			Number: 0,
+			TS:     0,
+			Data:   0,
+		},
+		{
 			Hash:   common.BytesToHash([]byte{0x01}),
 			Number: 1,
 			TS:     0,
@@ -124,7 +130,7 @@ func TestWriter_Write(t *testing.T) {
 			require.NoError(t, err)
 
 			// check WAL files
-			filePath := path.Join(buildETHWALPath(tc.options.Dataset.Name, tc.options.Dataset.Version, tc.options.Dataset.Path), (&File{FirstBlockNum: 1, LastBlockNum: 4}).Path())
+			filePath := path.Join(buildETHWALPath(tc.options.Dataset.Name, tc.options.Dataset.Version, tc.options.Dataset.Path), (&File{FirstBlockNum: 0, LastBlockNum: 4}).Path())
 			_, err = os.Stat(filePath)
 			require.NoError(t, err)
 
@@ -153,6 +159,64 @@ func TestWriter_Write(t *testing.T) {
 	}
 }
 
+func TestWriter_Write_ZeroBlockNum(t *testing.T) {
+	defer testTeardown(t)
+
+	w, err := NewWriter[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	require.NoError(t, err)
+
+	err = w.Write(context.Background(), Block[int]{Number: 0, Hash: common.BytesToHash([]byte{0x01}), Parent: common.Hash{0x00}})
+	require.NoError(t, err)
+
+	err = w.Write(context.Background(), Block[int]{Number: 1, Hash: common.BytesToHash([]byte{0x02}), Parent: common.BytesToHash([]byte{0x01})})
+	require.NoError(t, err)
+
+	err = w.Write(context.Background(), Block[int]{Number: 2, Hash: common.BytesToHash([]byte{0x03}), Parent: common.BytesToHash([]byte{0x02})})
+	require.NoError(t, err)
+
+	err = w.RollFile(context.Background())
+	require.NoError(t, err)
+
+	err = w.Write(context.Background(), Block[int]{Number: 3, Hash: common.BytesToHash([]byte{0x04}), Parent: common.BytesToHash([]byte{0x03})})
+	require.NoError(t, err)
+
+	err = w.Write(context.Background(), Block[int]{Number: 4, Hash: common.BytesToHash([]byte{0x05}), Parent: common.BytesToHash([]byte{0x04})})
+	require.NoError(t, err)
+
+	err = w.Write(context.Background(), Block[int]{Number: 5, Hash: common.BytesToHash([]byte{0x06}), Parent: common.BytesToHash([]byte{0x05})})
+	require.NoError(t, err)
+
+	err = w.RollFile(context.Background())
+	require.NoError(t, err)
+
+	err = w.Close(context.Background())
+	require.NoError(t, err)
+
+	// check WAL files
+	r, err := NewReader[int](Options{
+		Dataset: Dataset{
+			Name:    "int-wal",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+	})
+	require.NoError(t, err)
+
+	err = r.Seek(context.Background(), 0)
+	require.NoError(t, err)
+
+	for i := 0; i < 6; i++ {
+		blk, err := r.Read(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, uint64(i), blk.Number)
+	}
+}
 func TestWriter_Continue(t *testing.T) {
 	defer testTeardown(t)
 
@@ -250,6 +314,9 @@ func TestNoGapWriter_FileRollOnClose(t *testing.T) {
 	ngw := NewWriterNoGap[int](w)
 	require.NotNil(t, w)
 
+	err = ngw.Write(context.Background(), Block[int]{Number: 0})
+	require.NoError(t, err)
+
 	err = ngw.Write(context.Background(), Block[int]{Number: 1})
 	require.NoError(t, err)
 
@@ -265,7 +332,7 @@ func TestNoGapWriter_FileRollOnClose(t *testing.T) {
 	require.Equal(t, uint64(3), w.BlockNum())
 
 	// check WAL files
-	filePath := path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), (&File{FirstBlockNum: 1, LastBlockNum: 3}).Path())
+	filePath := path.Join(buildETHWALPath(opt.Dataset.Name, opt.Dataset.Version, opt.Dataset.Path), (&File{FirstBlockNum: 0, LastBlockNum: 3}).Path())
 	_, err = os.Stat(filePath)
 	require.NoError(t, err)
 }

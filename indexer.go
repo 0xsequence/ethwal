@@ -134,16 +134,21 @@ func (i *Indexer[T]) BlockNum() uint64 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
+	// initialize lowestBlockNum to math.MaxUint64
 	var lowestBlockNum uint64 = math.MaxUint64
 	for _, indexUpdate := range i.indexUpdates {
+		// if no blocks have been indexed, return NoBlockNum
+		if indexUpdate.LastBlockNum == NoBlockNum {
+			return NoBlockNum
+		}
+
+		// update lowestBlockNum if the current indexUpdate has a lower last block number
 		if indexUpdate.LastBlockNum < lowestBlockNum {
 			lowestBlockNum = indexUpdate.LastBlockNum
 		}
 	}
 
-	if lowestBlockNum == math.MaxUint64 {
-		return 0
-	}
+	// return the lowest block number indexed by all indexes
 	return lowestBlockNum
 }
 

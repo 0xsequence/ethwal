@@ -58,7 +58,7 @@ func generateMixedIntBlocks() []Block[[]int] {
 	// 45-49 generate 5 blocks with no data
 	// 50-69 generate 20 blocks with random but repeating huge numbers
 
-	for i := 1; i <= 20; i++ {
+	for i := 0; i <= 20; i++ {
 		blocks = append(blocks, Block[[]int]{
 			Hash:   common.BytesToHash([]byte{byte(i)}),
 			Number: uint64(i),
@@ -288,7 +288,7 @@ func TestIntMixFiltering(t *testing.T) {
 	}
 
 	onlyEvenResults := onlyEvenFilter.IndexIterator(context.Background())
-	assert.Len(t, onlyEvenResults.Bitmap().ToArray(), 20)
+	assert.Len(t, onlyEvenResults.Bitmap().ToArray(), 21)
 	for _, block := range onlyEvenResults.Bitmap().ToArray() {
 		assert.True(t, block <= 20)
 	}
@@ -373,7 +373,7 @@ func TestLowestIndexedBlockNum(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	lowestBlockIndexed = indexer.BlockNum()
-	assert.Equal(t, uint64(0), lowestBlockIndexed)
+	assert.Equal(t, NoBlockNum, lowestBlockIndexed)
 	blocks := generateIntBlocks()
 	for _, block := range blocks[:50] {
 		err = indexer.Index(context.Background(), block)

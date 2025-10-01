@@ -43,8 +43,6 @@ func (o FilterBuilderOptions[T]) WithDefaults() FilterBuilderOptions[T] {
 }
 
 type filterBuilder[T any] struct {
-	ctx context.Context
-
 	indexes map[IndexName]Index[T]
 	fs      storage.FS
 }

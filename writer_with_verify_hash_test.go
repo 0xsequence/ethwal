@@ -552,3 +552,100 @@ func TestBlockHashGetterFromReader_WithCompression(t *testing.T) {
 			tc.blockNum, tc.hash.String(), hash.String())
 	}
 }
+
+func TestWriterWithVerifyHash_Write_BlockZero(t *testing.T) {
+	defer testTeardown(t)
+
+	options := Options{
+		Dataset: Dataset{
+			Name:    "test-block-zero",
+			Path:    testPath,
+			Version: defaultDatasetVersion,
+		},
+		NewEncoder:      NewJSONEncoder,
+		NewDecoder:      NewJSONDecoder,
+		FileRollOnClose: true,
+	}
+
+	ctx := context.Background()
+
+	// Create a writer
+	w, err := NewWriter[int](options)
+	require.NoError(t, err)
+
+	// Create a writerWithVerifyHash
+	mockGetter := &mockBlockHashGetter{}
+	verifyWriter := NewWriterWithVerifyHash[int](w, mockGetter.GetHash)
+
+	// Write block 0
+	block0 := Block[int]{
+		Hash:   common.BytesToHash([]byte{0x00}),
+		Parent: common.Hash{}, // Block 0 has empty parent
+		Number: 0,
+		Data:   100,
+	}
+
+	err = verifyWriter.Write(ctx, block0)
+	require.NoError(t, err, "Block 0 should be written successfully")
+	assert.Equal(t, uint64(0), w.BlockNum(), "BlockNum should return 0")
+
+	// Write block 1 to ensure file gets flushed (writer needs at least one block >= firstBlockNum)
+	block1 := Block[int]{
+		Hash:   common.BytesToHash([]byte{0x01}),
+		Parent: block0.Hash,
+		Number: 1,
+		Data:   101,
+	}
+
+	err = verifyWriter.Write(ctx, block1)
+	require.NoError(t, err, "Block 1 should be written successfully")
+
+	// Debug: Check writer state before close
+	writerImpl := w.(*writer[int])
+	t.Logf("Before close: firstBlockNum=%d, lastBlockNum=%d", writerImpl.firstBlockNum, writerImpl.lastBlockNum)
+
+	// Close writer to flush to disk
+	err = w.Close(ctx)
+	require.NoError(t, err)
+
+	// Debug: Check file index
+	reader, err := NewReader[int](options)
+	require.NoError(t, err)
+	defer reader.Close()
+
+	fileIndex := reader.FileIndex()
+	files := fileIndex.Files()
+	t.Logf("Number of files: %d", len(files))
+	for i, f := range files {
+		t.Logf("File %d: blocks %d-%d, path=%s", i, f.FirstBlockNum, f.LastBlockNum, f.Path())
+	}
+
+	// Verify we can read block 0 directly with the reader (already created above for debugging)
+	err = reader.Seek(ctx, 0)
+	require.NoError(t, err, "Should be able to seek to block 0")
+
+	readBlock0, err := reader.Read(ctx)
+	require.NoError(t, err, "Should be able to read block 0")
+	assert.Equal(t, uint64(0), readBlock0.Number, "Block number should be 0")
+	assert.Equal(t, block0.Hash, readBlock0.Hash, "Block 0 hash should match")
+	assert.Equal(t, block0.Data, readBlock0.Data, "Block 0 data should match")
+
+	// Read block 1
+	readBlock1, err := reader.Read(ctx)
+	require.NoError(t, err, "Should be able to read block 1")
+	assert.Equal(t, uint64(1), readBlock1.Number, "Block number should be 1")
+	assert.Equal(t, block1.Hash, readBlock1.Hash, "Block 1 hash should match")
+	assert.Equal(t, block1.Data, readBlock1.Data, "Block 1 data should match")
+
+	// Also verify using BlockHashGetterFromReader
+	getter := BlockHashGetterFromReader[int](options)
+	hash0, err := getter(ctx, 0)
+	require.NoError(t, err, "Should be able to get block 0 hash via getter")
+	assert.Equal(t, block0.Hash, hash0, "Block 0 hash from getter should match")
+
+	hash1, err := getter(ctx, 1)
+	require.NoError(t, err, "Should be able to get block 1 hash via getter")
+	assert.Equal(t, block1.Hash, hash1, "Block 1 hash from getter should match")
+
+	mockGetter.AssertNotCalled(t, "GetHash")
+}

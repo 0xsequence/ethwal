@@ -50,7 +50,7 @@ func (u *IndexUpdate) Merge(update *IndexUpdate) {
 		u.BlockBitmap[indexValue].Or(bm)
 	}
 
-	if u.LastBlockNum < update.LastBlockNum {
+	if u.LastBlockNum == NoBlockNum || u.LastBlockNum < update.LastBlockNum {
 		u.LastBlockNum = update.LastBlockNum
 	}
 }
@@ -97,7 +97,7 @@ func (i *Index[T]) IndexBlock(ctx context.Context, fs storage.FS, block Block[T]
 			return nil, fmt.Errorf("unexpected: failed to get number of blocks indexed: %w", err)
 		}
 
-		if block.Number <= numBlocksIndexed {
+		if numBlocksIndexed != NoBlockNum && block.Number <= numBlocksIndexed {
 			return nil, nil
 		}
 	}
@@ -148,7 +148,7 @@ func (i *Index[T]) Store(ctx context.Context, fs storage.FS, indexUpdate *IndexU
 	if err != nil {
 		return fmt.Errorf("failed to get number of blocks indexed: %w", err)
 	}
-	if lastBlockNumIndexed >= indexUpdate.LastBlockNum {
+	if lastBlockNumIndexed != NoBlockNum && lastBlockNumIndexed >= indexUpdate.LastBlockNum {
 		return nil
 	}
 
@@ -191,19 +191,19 @@ func (i *Index[T]) LastBlockNumIndexed(ctx context.Context, fs storage.FS) (uint
 	file, err := fs.Open(ctx, indexedBlockNumFilePath(string(i.name)), nil)
 	if err != nil {
 		// file doesn't exist
-		return 0, nil
+		return NoBlockNum, nil
 	}
 	defer file.Close()
 
 	buf, err := io.ReadAll(file)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read IndexBlock file: %w", err)
+		return NoBlockNum, fmt.Errorf("failed to read IndexBlock file: %w", err)
 	}
 
 	var numBlocksIndexed uint64
 	err = binary.Read(bytes.NewReader(buf), binary.BigEndian, &numBlocksIndexed)
 	if err != nil {
-		return 0, fmt.Errorf("failed to unmarshal bitmap: %w", err)
+		return NoBlockNum, fmt.Errorf("failed to unmarshal bitmap: %w", err)
 	}
 
 	i.numBlocksIndexed = &atomic.Uint64{}
@@ -219,7 +219,7 @@ func (i *Index[T]) storeLastBlockNumIndexed(ctx context.Context, fs storage.FS, 
 		prevBlockIndexed = blocksIndexed
 	}
 
-	if prevBlockIndexed >= numBlocksIndexed {
+	if prevBlockIndexed != NoBlockNum && prevBlockIndexed >= numBlocksIndexed {
 		return nil
 	}
 

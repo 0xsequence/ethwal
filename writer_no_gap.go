@@ -13,7 +13,7 @@ type noGapWriter[T any] struct {
 }
 
 func NewWriterNoGap[T any](w Writer[T]) Writer[T] {
-	return &noGapWriter[T]{w: w}
+	return &noGapWriter[T]{w: w, lastBlockNum: w.BlockNum()}
 }
 
 func (n *noGapWriter[T]) FileSystem() storage.FS {
@@ -24,7 +24,7 @@ func (n *noGapWriter[T]) Write(ctx context.Context, b Block[T]) error {
 	defer func() { n.lastBlockNum = b.Number }()
 
 	// skip if block number is less than or equal to last block number
-	if b.Number <= n.lastBlockNum {
+	if n.lastBlockNum != NoBlockNum && b.Number <= n.lastBlockNum {
 		return nil
 	}
 
@@ -40,6 +40,7 @@ func (n *noGapWriter[T]) Write(ctx context.Context, b Block[T]) error {
 			return err
 		}
 	}
+
 	return n.w.Write(ctx, b)
 }
 

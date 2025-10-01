@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -29,10 +30,9 @@ type Reader[T any] interface {
 }
 
 type reader[T any] struct {
-	options        Options
-	path           string
-	fs             storage.FS
-	useCompression bool
+	options Options
+	path    string
+	fs      storage.FS
 
 	closer io.Closer
 
@@ -140,8 +140,11 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 		}
 	}
 
-	var block Block[T]
-	for structs.IsZero(block) || block.Number <= r.lastBlockNum {
+	var (
+		block                    Block[T]
+		hasSuccessfullyReadBlock bool
+	)
+	for !hasSuccessfullyReadBlock || block.Number <= r.lastBlockNum && r.lastBlockNum != math.MaxUint64 {
 		select {
 		case <-ctx.Done():
 			return Block[T]{}, ctx.Err()
@@ -168,6 +171,8 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 					r.lastBlockNum = block.Number
 				}
 
+				hasSuccessfullyReadBlock = true
+
 				if !r.isBlockWithin(block) {
 					currentFile := r.fileIndex.At(r.currFileIndex)
 					return Block[T]{}, fmt.Errorf("block number %d is out of file block %d-%d range",
@@ -180,6 +185,8 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 			}
 			return Block[T]{}, fmt.Errorf("failed to decode file data: %w", err)
 		}
+
+		hasSuccessfullyReadBlock = true
 
 		if !r.isBlockWithin(block) {
 			currentFile := r.fileIndex.At(r.currFileIndex)

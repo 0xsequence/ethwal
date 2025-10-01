@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sync"
 
@@ -77,10 +78,18 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		return nil, fmt.Errorf("failed to load file index: %w", err)
 	}
 
+	var firstBlockNum uint64
 	var lastBlockNum uint64
 	var fileIndexFileList = fileIndex.Files()
 	if len(fileIndexFileList) > 0 {
 		lastBlockNum = fileIndexFileList[len(fileIndexFileList)-1].LastBlockNum
+	}
+
+	if lastBlockNum == 0 {
+		firstBlockNum = NoBlockNum
+		lastBlockNum = NoBlockNum
+	} else {
+		firstBlockNum = lastBlockNum + 1
 	}
 
 	// create new writer
@@ -88,7 +97,7 @@ func NewWriter[T any](opt Options) (Writer[T], error) {
 		options:       opt,
 		path:          datasetPath,
 		fs:            fs,
-		firstBlockNum: lastBlockNum + 1,
+		firstBlockNum: firstBlockNum,
 		lastBlockNum:  lastBlockNum,
 		fileIndex:     fileIndex,
 		buffer:        bytes.NewBuffer(make([]byte, 0, defaultFileSize)),
@@ -103,7 +112,7 @@ func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.lastBlockNum >= b.Number {
+	if w.lastBlockNum != math.MaxUint64 && w.lastBlockNum >= b.Number {
 		return nil
 	}
 
@@ -116,6 +125,10 @@ func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 	err := w.encoder.Encode(b)
 	if err != nil {
 		return fmt.Errorf("failed to encode file data: %w", err)
+	}
+
+	if w.firstBlockNum == NoBlockNum {
+		w.firstBlockNum = b.Number
 	}
 
 	w.lastBlockNum = b.Number

@@ -45,26 +45,41 @@ func NewWriterWithVerifyHash[T any](writer Writer[T], blockHashGetter BlockHashG
 }
 
 func (w *writerWithVerifyHash[T]) Write(ctx context.Context, b Block[T]) error {
-	var err error
-	if w.prevHash == (common.Hash{}) && b.Number > 1 {
-		w.prevHash, err = w.blockHashGetter(ctx, b.Number-1)
+	// Skip validation if block is first block
+	if b.Number == 1 {
+		if err := w.Writer.Write(ctx, b); err != nil {
+			return fmt.Errorf("failed to write block: %w", err)
+		}
+
+		w.prevHash = b.Hash
+		return nil
+	}
+
+	// Get previous hash if not already set
+	if w.prevHash == (common.Hash{}) {
+		prevHash, err := w.blockHashGetter(ctx, b.Number-1)
 		if err != nil {
 			return fmt.Errorf("failed to get block hash: %w", err)
 		}
+
+		w.prevHash = prevHash
 	}
 
+	// Validate parent hash
 	if b.Parent != w.prevHash {
 		w.prevHash = common.Hash{}
 		return fmt.Errorf("parent hash mismatch, expected %s, got %s",
 			w.prevHash.String(), b.Parent.String())
 	}
 
-	err = w.Writer.Write(ctx, b)
+	// Write block
+	err := w.Writer.Write(ctx, b)
 	if err != nil {
 		w.prevHash = common.Hash{}
 		return fmt.Errorf("failed to write block: %w", err)
 	}
 
+	// Update prev hash
 	w.prevHash = b.Hash
 	return nil
 }

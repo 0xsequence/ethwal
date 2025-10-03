@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/0xsequence/ethwal"
 	"github.com/0xsequence/ethwal/storage"
@@ -49,6 +50,8 @@ func main() {
 			var fs storage.FS = local.NewLocalFS("./")
 			if bucket := c.String(GoogleCloudBucket.Name); bucket != "" {
 				fs = gcloud.NewGCloudFS(bucket, nil)
+			} else if strings.HasPrefix(c.String(DatasetPathFlag.Name), "/") {
+				fs = local.NewLocalFS("/")
 			}
 
 			dataset := ethwal.Dataset{
@@ -91,6 +94,8 @@ func main() {
 					var fs storage.FS = local.NewLocalFS("./")
 					if bucket := c.String(GoogleCloudBucket.Name); bucket != "" {
 						fs = gcloud.NewGCloudFS(bucket, nil)
+					} else if strings.HasPrefix(c.String(DatasetPathFlag.Name), "/") {
+						fs = local.NewLocalFS("/")
 					}
 
 					dataset := ethwal.Dataset{

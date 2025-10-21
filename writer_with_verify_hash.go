@@ -2,10 +2,13 @@ package ethwal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 )
+
+var ErrParentHashMismatch = errors.New("parent hash mismatch")
 
 type BlockHashGetter func(ctx context.Context, blockNum uint64) (common.Hash, error)
 
@@ -72,8 +75,7 @@ func (w *writerWithVerifyHash[T]) Write(ctx context.Context, b Block[T]) error {
 
 	// Validate parent hash
 	if b.Parent != w.prevHash {
-		return fmt.Errorf("parent hash mismatch, expected %s, got %s",
-			w.prevHash.String(), b.Parent.String())
+		return fmt.Errorf("%w, expected %s, got %s", ErrParentHashMismatch, b.Parent.String(), w.prevHash.String())
 	}
 
 	// Write block

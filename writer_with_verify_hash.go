@@ -2,10 +2,13 @@ package ethwal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 )
+
+var ErrParentHashMismatch = errors.New("parent hash mismatch")
 
 type BlockHashGetter func(ctx context.Context, blockNum uint64) (common.Hash, error)
 
@@ -45,6 +48,11 @@ func NewWriterWithVerifyHash[T any](writer Writer[T], blockHashGetter BlockHashG
 }
 
 func (w *writerWithVerifyHash[T]) Write(ctx context.Context, b Block[T]) error {
+	// Skip if block is already written
+	if b.Number <= w.Writer.BlockNum() {
+		return nil
+	}
+
 	// Skip validation if block is first block
 	if b.Number == 1 {
 		if err := w.Writer.Write(ctx, b); err != nil {
@@ -67,15 +75,12 @@ func (w *writerWithVerifyHash[T]) Write(ctx context.Context, b Block[T]) error {
 
 	// Validate parent hash
 	if b.Parent != w.prevHash {
-		w.prevHash = common.Hash{}
-		return fmt.Errorf("parent hash mismatch, expected %s, got %s",
-			w.prevHash.String(), b.Parent.String())
+		return fmt.Errorf("%w, expected %s, got %s", ErrParentHashMismatch, b.Parent.String(), w.prevHash.String())
 	}
 
 	// Write block
 	err := w.Writer.Write(ctx, b)
 	if err != nil {
-		w.prevHash = common.Hash{}
 		return fmt.Errorf("failed to write block: %w", err)
 	}
 

@@ -92,6 +92,7 @@ func TestWriterWithVerifyHash_Write_FirstBlock(t *testing.T) {
 	}
 
 	// Mock expectations
+	mockWriter.On("BlockNum").Return(uint64(0)) // No blocks written yet
 	mockWriter.On("Write", ctx, block).Return(nil)
 
 	err := writer.Write(ctx, block)
@@ -138,8 +139,11 @@ func TestWriterWithVerifyHash_Write_SuccessfulSequence(t *testing.T) {
 	}
 
 	// Mock expectations
+	mockWriter.On("BlockNum").Return(uint64(0)).Once() // Before block 1
 	mockWriter.On("Write", ctx, block1).Return(nil)
+	mockWriter.On("BlockNum").Return(uint64(1)).Once() // Before block 2
 	mockWriter.On("Write", ctx, block2).Return(nil)
+	mockWriter.On("BlockNum").Return(uint64(2)).Once() // Before block 3
 	mockWriter.On("Write", ctx, block3).Return(nil)
 
 	// Write blocks in sequence
@@ -178,6 +182,7 @@ func TestWriterWithVerifyHash_Write_WithBlockHashGetter(t *testing.T) {
 	}
 
 	// Mock expectations
+	mockWriter.On("BlockNum").Return(uint64(2)) // Block 2 is the last written block
 	mockGetter.On("GetHash", ctx, uint64(2)).Return(prevHash, nil)
 	mockWriter.On("Write", ctx, block3).Return(nil)
 
@@ -212,13 +217,16 @@ func TestWriterWithVerifyHash_Write_ParentHashMismatch(t *testing.T) {
 		Data:   44,
 	}
 
+	// Mock expectations
+	mockWriter.On("BlockNum").Return(uint64(1)) // Block 1 is the last written block
+
 	err := writer.Write(ctx, block)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parent hash mismatch")
 
-	// Check that prevHash is reset to empty on error
-	assert.Equal(t, common.Hash{}, writerImpl.prevHash)
+	// prevHash should remain unchanged after error (not reset)
+	assert.Equal(t, common.BytesToHash([]byte{0x01}), writerImpl.prevHash)
 
 	// Mock should not be called since validation fails first
 	mockWriter.AssertNotCalled(t, "Write")
@@ -243,6 +251,7 @@ func TestWriterWithVerifyHash_Write_BlockHashGetterError(t *testing.T) {
 	getterError := errors.New("failed to get block hash")
 
 	// Mock expectations
+	mockWriter.On("BlockNum").Return(uint64(2)) // Block 2 is the last written block
 	mockGetter.On("GetHash", ctx, uint64(2)).Return(common.Hash{}, getterError)
 
 	err := writer.Write(ctx, block)
@@ -273,6 +282,7 @@ func TestWriterWithVerifyHash_Write_UnderlyingWriterError(t *testing.T) {
 	writeError := errors.New("write failed")
 
 	// Mock expectations
+	mockWriter.On("BlockNum").Return(uint64(0)) // No blocks written yet
 	mockWriter.On("Write", ctx, block).Return(writeError)
 
 	err := writer.Write(ctx, block)
@@ -281,7 +291,7 @@ func TestWriterWithVerifyHash_Write_UnderlyingWriterError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to write block")
 	assert.ErrorIs(t, err, writeError)
 
-	// Check that prevHash is reset to empty on write error
+	// prevHash should remain unchanged after error (not reset)
 	writerImpl := writer.(*writerWithVerifyHash[int])
 	assert.Equal(t, common.Hash{}, writerImpl.prevHash)
 
@@ -308,6 +318,7 @@ func TestWriterWithVerifyHash_Write_ParentHashMismatchAfterGetter(t *testing.T) 
 	}
 
 	// Mock expectations - getter returns correct hash, but block has wrong parent
+	mockWriter.On("BlockNum").Return(uint64(2)) // Block 2 is the last written block
 	mockGetter.On("GetHash", ctx, uint64(2)).Return(actualPrevHash, nil)
 
 	err := writer.Write(ctx, block)
@@ -315,9 +326,9 @@ func TestWriterWithVerifyHash_Write_ParentHashMismatchAfterGetter(t *testing.T) 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parent hash mismatch")
 
-	// Check that prevHash is reset to empty on error
+	// prevHash should be set to the fetched value (actualPrevHash), not reset
 	writerImpl := writer.(*writerWithVerifyHash[int])
-	assert.Equal(t, common.Hash{}, writerImpl.prevHash)
+	assert.Equal(t, actualPrevHash, writerImpl.prevHash)
 
 	mockGetter.AssertExpectations(t)
 	mockWriter.AssertNotCalled(t, "Write") // Should not call write if validation fails
@@ -368,7 +379,7 @@ func TestWriterWithVerifyHash_InterfaceCompliance(t *testing.T) {
 }
 
 func TestWriterWithVerifyHash_Write_ResetAfterError(t *testing.T) {
-	// Test that the writer can recover after an error by resetting prevHash
+	// Test that the writer can recover after an error by manually resetting prevHash
 	mockWriter := &mockWriter[int]{}
 	mockGetter := &mockBlockHashGetter{}
 
@@ -385,12 +396,13 @@ func TestWriterWithVerifyHash_Write_ResetAfterError(t *testing.T) {
 		Data:   42,
 	}
 
+	mockWriter.On("BlockNum").Return(uint64(0)).Once()
 	mockWriter.On("Write", ctx, block1).Return(nil)
 	err := writer.Write(ctx, block1)
 	require.NoError(t, err)
 	assert.Equal(t, block1.Hash, writerImpl.prevHash)
 
-	// Then try to write a block with wrong parent hash (should error and reset)
+	// Then try to write a block with wrong parent hash (should error but NOT reset prevHash)
 	block2Wrong := Block[int]{
 		Hash:   common.BytesToHash([]byte{0x02}),
 		Parent: common.BytesToHash([]byte{0x99}), // Wrong parent
@@ -398,9 +410,13 @@ func TestWriterWithVerifyHash_Write_ResetAfterError(t *testing.T) {
 		Data:   43,
 	}
 
+	mockWriter.On("BlockNum").Return(uint64(1)).Once()
 	err = writer.Write(ctx, block2Wrong)
 	require.Error(t, err)
-	assert.Equal(t, common.Hash{}, writerImpl.prevHash) // Should be reset
+	assert.Equal(t, block1.Hash, writerImpl.prevHash) // Should NOT be reset, remains as block1.Hash
+
+	// Manually reset prevHash to simulate recovery (e.g., after recreating the writer)
+	writerImpl.prevHash = common.Hash{}
 
 	// Now write a new sequence starting from block 3 (requiring hash lookup)
 	block2Hash := common.BytesToHash([]byte{0x02})
@@ -411,6 +427,7 @@ func TestWriterWithVerifyHash_Write_ResetAfterError(t *testing.T) {
 		Data:   44,
 	}
 
+	mockWriter.On("BlockNum").Return(uint64(2)).Once()
 	mockGetter.On("GetHash", ctx, uint64(2)).Return(block2Hash, nil)
 	mockWriter.On("Write", ctx, block3).Return(nil)
 
@@ -420,6 +437,34 @@ func TestWriterWithVerifyHash_Write_ResetAfterError(t *testing.T) {
 
 	mockWriter.AssertExpectations(t)
 	mockGetter.AssertExpectations(t)
+}
+
+func TestWriterWithVerifyHash_Write_SkipAlreadyWritten(t *testing.T) {
+	mockWriter := &mockWriter[int]{}
+	mockGetter := &mockBlockHashGetter{}
+
+	writer := NewWriterWithVerifyHash[int](mockWriter, mockGetter.GetHash)
+
+	ctx := context.Background()
+
+	block := Block[int]{
+		Hash:   common.BytesToHash([]byte{0x05}),
+		Parent: common.BytesToHash([]byte{0x04}),
+		Number: 5,
+		Data:   42,
+	}
+
+	// Mock: BlockNum returns 10, meaning blocks up to 10 are already written
+	mockWriter.On("BlockNum").Return(uint64(10))
+
+	// Try to write block 5 - should be skipped since BlockNum() returns 10
+	err := writer.Write(ctx, block)
+
+	require.NoError(t, err)
+	mockWriter.AssertExpectations(t)
+	// Write should not be called since block is already written
+	mockWriter.AssertNotCalled(t, "Write")
+	mockGetter.AssertNotCalled(t, "GetHash")
 }
 
 func TestBlockGetterFromReader(t *testing.T) {

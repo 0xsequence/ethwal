@@ -141,23 +141,26 @@ func (w *writer[T]) Close(ctx context.Context) error {
 
 	if w.options.FileRollOnClose {
 		// close previous buffer and write file to fs
-		if w.bufferCloser != nil {
+		if w.encoder != nil && w.buffer != nil {
 			// skip if there are no blocks to write
 			if w.lastBlockNum < w.firstBlockNum {
 				return nil
 			}
 
-			err := w.bufferCloser.Close()
-			if err != nil {
-				return err
+			// close buffer writers
+			if w.bufferCloser != nil {
+				if err := w.bufferCloser.Close(); err != nil {
+					return err
+				}
+
+				w.bufferCloser = nil
 			}
 
-			err = w.writeFile(ctx)
-			if err != nil {
+			// write buffer into FS
+			if err := w.writeFile(ctx); err != nil {
 				return err
 			}
 		}
-		w.bufferCloser = nil
 	}
 	return nil
 }
@@ -176,19 +179,23 @@ func (w *writer[T]) isReadyToWrite() bool {
 
 func (w *writer[T]) rollFile(ctx context.Context) error {
 	// close previous buffer and write file to fs
-	if w.bufferCloser != nil {
+	if w.encoder != nil && w.buffer != nil {
 		// skip if there are no blocks to write
 		if w.lastBlockNum < w.firstBlockNum {
 			return nil
 		}
 
-		err := w.bufferCloser.Close()
-		if err != nil {
-			return err
+		// close buffer writers
+		if w.bufferCloser != nil {
+			if err := w.bufferCloser.Close(); err != nil {
+				return err
+			}
+
+			w.bufferCloser = nil
 		}
 
-		err = w.writeFile(ctx)
-		if err != nil {
+		// write buffer into FS
+		if err := w.writeFile(ctx); err != nil {
 			return err
 		}
 	}

@@ -214,36 +214,34 @@ func (w *writer[T]) writeFile(ctx context.Context) error {
 		return err
 	}
 
-	recoverFileIndex := func() {
-		// remove last file from file index as it's not written
-		files := w.fileIndex.Files()[:len(w.fileIndex.Files())-1]
-		w.fileIndex = NewFileIndexFromFiles(w.fs, files)
-	}
+	defer func() {
+		if err != nil {
+			// remove last file from file index as it's not written
+			files := w.fileIndex.Files()[:len(w.fileIndex.Files())-1]
+			w.fileIndex = NewFileIndexFromFiles(w.fs, files)
+		}
+	}()
 
 	// save file index
 	err = w.fileIndex.Save(ctx)
 	if err != nil {
-		recoverFileIndex()
 		return err
 	}
 
 	// save file
 	f, err := newFile.Create(ctx, w.fs)
 	if err != nil {
-		recoverFileIndex()
 		return err
 	}
 
 	_, err = f.Write(w.buffer.Bytes())
 	if err != nil {
 		_ = f.Close()
-		recoverFileIndex()
 		return err
 	}
 
 	err = f.Close()
 	if err != nil {
-		recoverFileIndex()
 		return err
 	}
 

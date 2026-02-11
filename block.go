@@ -12,4 +12,8 @@ type Block[T any] struct {
 	Data   T           `json:"blockData"`
 }
 
+func (b Block[T]) IsZero() bool {
+	return b.Number == 0 && b.TS == 0 && b.Hash == (common.Hash{}) && b.Parent == (common.Hash{})
+}
+
 type Blocks[T any] []Block[T]

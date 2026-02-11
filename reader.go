@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/0xsequence/ethwal/storage/stub"
-	"github.com/fatih/structs"
 
 	"github.com/0xsequence/ethwal/storage"
 	"github.com/0xsequence/ethwal/storage/local"
@@ -141,7 +140,7 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 	}
 
 	var block Block[T]
-	for structs.IsZero(block) || block.Number <= r.lastBlockNum {
+	for block.IsZero() || block.Number <= r.lastBlockNum {
 		select {
 		case <-ctx.Done():
 			return Block[T]{}, ctx.Err()
@@ -164,7 +163,7 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 					return Block[T]{}, fmt.Errorf("failed to decode data: %w", err)
 				}
 
-				if !structs.IsZero(block) {
+				if !block.IsZero() {
 					r.lastBlockNum = block.Number
 				}
 
@@ -190,7 +189,7 @@ func (r *reader[T]) Read(ctx context.Context) (Block[T], error) {
 		}
 	}
 
-	if !structs.IsZero(block) {
+	if !block.IsZero() {
 		r.lastBlockNum = block.Number
 	}
 

@@ -41,13 +41,13 @@ func TestLastBlockNumberRollPolicy(t *testing.T) {
 	p := NewLastBlockNumberRollPolicy(10)
 	assert.False(t, p.ShouldRoll())
 
-	p.onBlockProcessed(5)
+	p.OnBlockProcessed(5)
 	assert.False(t, p.ShouldRoll())
 
-	p.onBlockProcessed(10)
+	p.OnBlockProcessed(10)
 	assert.True(t, p.ShouldRoll())
 
-	p.onBlockProcessed(11)
+	p.OnBlockProcessed(11)
 	assert.False(t, p.ShouldRoll())
 }
 
@@ -77,10 +77,10 @@ func TestNewFileSizeOrLastBlockNumberRollPolicy(t *testing.T) {
 
 	assert.False(t, fol.ShouldRoll())
 
-	fol.onBlockProcessed(10)
+	fol.OnBlockProcessed(10)
 	assert.True(t, fol.ShouldRoll())
 
-	fol.onBlockProcessed(11)
+	fol.OnBlockProcessed(11)
 	assert.False(t, fol.ShouldRoll())
 
 	_, err := w.Write([]byte("hello world"))
@@ -91,6 +91,6 @@ func TestNewFileSizeOrLastBlockNumberRollPolicy(t *testing.T) {
 	fol.Reset()
 	assert.False(t, fol.ShouldRoll())
 
-	fol.onBlockProcessed(20)
+	fol.OnBlockProcessed(20)
 	assert.True(t, fol.ShouldRoll())
 }

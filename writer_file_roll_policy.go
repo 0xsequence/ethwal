@@ -11,9 +11,9 @@ type FileRollPolicy interface {
 	ShouldRoll() bool
 	Reset()
 
-	onWrite(data []byte)
-	onBlockProcessed(blockNum uint64)
-	onFlush(ctx context.Context)
+	OnWrite(data []byte)
+	OnBlockProcessed(blockNum uint64)
+	OnFlush(ctx context.Context)
 }
 
 type fileSizeRollPolicy struct {
@@ -33,13 +33,13 @@ func (p *fileSizeRollPolicy) Reset() {
 	p.bytesWritten = 0
 }
 
-func (p *fileSizeRollPolicy) onWrite(data []byte) {
+func (p *fileSizeRollPolicy) OnWrite(data []byte) {
 	p.bytesWritten += uint64(len(data))
 }
 
-func (p *fileSizeRollPolicy) onBlockProcessed(blockNum uint64) {}
+func (p *fileSizeRollPolicy) OnBlockProcessed(blockNum uint64) {}
 
-func (p *fileSizeRollPolicy) onFlush(ctx context.Context) {}
+func (p *fileSizeRollPolicy) OnFlush(ctx context.Context) {}
 
 // fileStats is a writer that keeps track of the number of bytes written to it.
 type writerWrapper struct {
@@ -49,7 +49,7 @@ type writerWrapper struct {
 }
 
 func (w *writerWrapper) Write(p []byte) (n int, err error) {
-	defer w.fsrp.onWrite(p)
+	defer w.fsrp.OnWrite(p)
 	return w.Writer.Write(p)
 }
 
@@ -59,7 +59,7 @@ type lastBlockNumberRollPolicy struct {
 	lastBlockNum uint64
 }
 
-func (l *lastBlockNumberRollPolicy) onWrite(data []byte) {}
+func (l *lastBlockNumberRollPolicy) OnWrite(data []byte) {}
 
 func NewLastBlockNumberRollPolicy(rollInterval uint64) FileRollPolicy {
 	return &lastBlockNumberRollPolicy{rollInterval: rollInterval}
@@ -73,11 +73,11 @@ func (l *lastBlockNumberRollPolicy) Reset() {
 	// noop
 }
 
-func (l *lastBlockNumberRollPolicy) onBlockProcessed(blockNum uint64) {
+func (l *lastBlockNumberRollPolicy) OnBlockProcessed(blockNum uint64) {
 	l.lastBlockNum = blockNum
 }
 
-func (l *lastBlockNumberRollPolicy) onFlush(ctx context.Context) {}
+func (l *lastBlockNumberRollPolicy) OnFlush(ctx context.Context) {}
 
 type timeBasedRollPolicy struct {
 	rollInterval time.Duration
@@ -108,11 +108,11 @@ func (t *timeBasedRollPolicy) Reset() {
 	t.lastTimeRolled = time.Now()
 }
 
-func (t *timeBasedRollPolicy) onWrite(data []byte) {}
+func (t *timeBasedRollPolicy) OnWrite(data []byte) {}
 
-func (t *timeBasedRollPolicy) onBlockProcessed(blockNum uint64) {}
+func (t *timeBasedRollPolicy) OnBlockProcessed(blockNum uint64) {}
 
-func (t *timeBasedRollPolicy) onFlush(ctx context.Context) {}
+func (t *timeBasedRollPolicy) OnFlush(ctx context.Context) {}
 
 type FileRollPolicies []FileRollPolicy
 
@@ -131,21 +131,21 @@ func (policies FileRollPolicies) Reset() {
 	}
 }
 
-func (policies FileRollPolicies) onWrite(data []byte) {
+func (policies FileRollPolicies) OnWrite(data []byte) {
 	for _, p := range policies {
-		p.onWrite(data)
+		p.OnWrite(data)
 	}
 }
 
-func (policies FileRollPolicies) onBlockProcessed(blockNum uint64) {
+func (policies FileRollPolicies) OnBlockProcessed(blockNum uint64) {
 	for _, p := range policies {
-		p.onBlockProcessed(blockNum)
+		p.OnBlockProcessed(blockNum)
 	}
 }
 
-func (policies FileRollPolicies) onFlush(ctx context.Context) {
+func (policies FileRollPolicies) OnFlush(ctx context.Context) {
 	for _, p := range policies {
-		p.onFlush(ctx)
+		p.OnFlush(ctx)
 	}
 }
 
@@ -166,16 +166,16 @@ func (w *wrappedRollPolicy) Reset() {
 	w.rollPolicy.Reset()
 }
 
-func (w *wrappedRollPolicy) onWrite(data []byte) {
-	w.rollPolicy.onWrite(data)
+func (w *wrappedRollPolicy) OnWrite(data []byte) {
+	w.rollPolicy.OnWrite(data)
 }
 
-func (w *wrappedRollPolicy) onBlockProcessed(blockNum uint64) {
-	w.rollPolicy.onBlockProcessed(blockNum)
+func (w *wrappedRollPolicy) OnBlockProcessed(blockNum uint64) {
+	w.rollPolicy.OnBlockProcessed(blockNum)
 }
 
-func (w *wrappedRollPolicy) onFlush(ctx context.Context) {
-	w.rollPolicy.onFlush(ctx)
+func (w *wrappedRollPolicy) OnFlush(ctx context.Context) {
+	w.rollPolicy.OnFlush(ctx)
 	w.flushFunc(ctx)
 }
 

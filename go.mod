@@ -9,7 +9,6 @@ require (
 	github.com/RoaringBitmap/roaring/v2 v2.3.4
 	github.com/Shopify/go-storage v1.3.2
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
-	github.com/fatih/structs v1.1.0
 	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli/v2 v2.27.2

@@ -119,7 +119,7 @@ func (w *writer[T]) Write(ctx context.Context, b Block[T]) error {
 	}
 
 	w.lastBlockNum = b.Number
-	w.options.FileRollPolicy.onBlockProcessed(w.lastBlockNum)
+	w.options.FileRollPolicy.OnBlockProcessed(w.lastBlockNum)
 	return nil
 }
 
@@ -206,7 +206,7 @@ func (w *writer[T]) rollFile(ctx context.Context) error {
 func (w *writer[T]) writeFile(ctx context.Context) error {
 	// create new file
 	newFile := &File{FirstBlockNum: w.firstBlockNum, LastBlockNum: w.lastBlockNum}
-	w.options.FileRollPolicy.onFlush(ctx)
+	w.options.FileRollPolicy.OnFlush(ctx)
 
 	// add file to file index
 	err := w.fileIndex.AddFile(newFile)

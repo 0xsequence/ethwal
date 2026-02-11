@@ -54,8 +54,15 @@ func (i *IndexFile) Write(ctx context.Context, bmap *roaring64.Bitmap) error {
 	defer file.Close()
 
 	comp := NewZSTDCompressor(file)
-	defer comp.Close()
 
 	_, err = bmap.WriteTo(comp)
-	return err
+	if err != nil {
+		_ = comp.Close()
+		return err
+	}
+
+	if err := comp.Close(); err != nil {
+		return fmt.Errorf("failed to close compressor: %w", err)
+	}
+	return nil
 }

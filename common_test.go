@@ -312,6 +312,41 @@ func TestFileIndex_Save(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// A reader loading the index while the writer saves it must never see a
+// partial file: the local FS publishes the new index atomically.
+func TestFileIndex_ConcurrentSaveAndLoad(t *testing.T) {
+	ctx := context.Background()
+	fs := local.NewLocalFS(t.TempDir())
+	files := make([]*File, 20000)
+	for i := range files {
+		files[i] = &File{FirstBlockNum: uint64(i) + 1, LastBlockNum: uint64(i) + 1}
+	}
+	fi := NewFileIndexFromFiles(fs, files)
+	require.NoError(t, fi.Save(ctx))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 30; i++ {
+			if err := fi.Save(ctx); err != nil {
+				t.Errorf("save: %v", err)
+				return
+			}
+		}
+	}()
+	loads := 0
+	for {
+		select {
+		case <-done:
+			require.NotZero(t, loads)
+			return
+		default:
+		}
+		require.NoError(t, NewFileIndex(fs).Load(ctx), "load %d", loads)
+		loads++
+	}
+}
+
 func BenchmarkFindInFileIndex(b *testing.B) {
 	benchCase := []struct {
 		NumFiles uint64
